@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}TradeLink NG — Nigeria's Skilled Trades Platform{% endblock %}</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;0,9..144,700;0,9..144,800;0,9..144,900;1,9..144,700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+
+  {% block extra_head %}{% endblock %}
+
+  <style>
+    /* =====================================================
+       TRADELINK NG — BASE STYLESHEET
+    ===================================================== */
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    /* FIX: must set overflow-x on html, not just body.
+       body overflow-x alone doesn't prevent the root scroll container
+       from exposing a horizontal scrollbar on iOS/Android. */
+    html {
+      scroll-behavior: smooth;
+      overflow-x: hidden;
+    }
+
+    :root {
+      --bg-base:        #0C0A08;
+      --bg-raised:      #131008;
+      --bg-card:        #181410;
+      --amber:          #F59E0B;
+      --amber-light:    #FCD34D;
+      --amber-dark:     #D97706;
+      --orange:         #F97316;
+      --emerald:        #10B981;
+      --sky:            #38BDF8;
+      --surface-1:      rgba(245,158,11,0.06);
+      --surface-2:      rgba(245,158,11,0.10);
+      --border-subtle:  rgba(245,158,11,0.12);
+      --border-strong:  rgba(245,158,11,0.28);
+      --text-1:         #FAF5EB;
+      --text-2:         rgba(250,245,235,0.6);
+      --text-3:         rgba(250,245,235,0.32);
+      --nav-h:          72px;
+      --r-xl:           24px;
+      --r-lg:           16px;
+      --r-md:           10px;
+      --r-sm:           6px;
+      --r-pill:         100px;
+      --shadow-sm:      0 2px 8px rgba(0,0,0,0.4);
+      --shadow-md:      0 8px 32px rgba(0,0,0,0.5);
+      --shadow-lg:      0 24px 64px rgba(0,0,0,0.6);
+      --shadow-amber:   0 8px 32px rgba(245,158,11,0.22);
+      --ease:           cubic-bezier(0.4,0,0.2,1);
+      --t:              all 0.28s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: var(--text-1);
+      background: var(--bg-base);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 10% 0%, rgba(245,158,11,0.08) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 90% 100%, rgba(249,115,22,0.06) 0%, transparent 55%),
+        radial-gradient(ellipse 50% 40% at 50% 50%, rgba(16,185,129,0.03) 0%, transparent 60%);
+      pointer-events: none; z-index: 0;
+    }
+
+    /* ========== NAVBAR ========== */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0;
+      height: var(--nav-h); z-index: 1000;
+      display: flex; align-items: center;
+      justify-content: space-between;
+      /* FIX: tighter min padding so logo + hamburger fit on 360px phones */
+      padding: 0 clamp(16px,5vw,64px);
+      background: rgba(12,10,8,0.75);
+      backdrop-filter: blur(20px) saturate(160%);
+      -webkit-backdrop-filter: blur(20px) saturate(160%);
+      border-bottom: 1px solid var(--border-subtle);
+      transition: var(--t);
+    }
+    .navbar.scrolled {
+      background: rgba(12,10,8,0.96);
+      border-bottom-color: var(--border-strong);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+    }
+
+    .nav-logo {
+      font-family: 'Fraunces', serif; font-weight: 800; font-size: 1.45rem;
+      letter-spacing: -0.5px; color: var(--text-1);
+      text-decoration: none; display: flex; align-items: center; gap: 10px;
+      flex-shrink: 0; /* FIX: stop logo from shrinking when space is tight */
+    }
+    .logo-mark {
+      width: 34px; height: 34px; border-radius: 9px;
+      background: linear-gradient(135deg, var(--amber), var(--orange));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.85rem; color: #0C0A08; font-weight: 900;
+      box-shadow: 0 4px 16px rgba(245,158,11,0.35); flex-shrink: 0;
+    }
+    .logo-ng { color: var(--amber); }
+
+    .nav-links {
+      display: flex; align-items: center; gap: 4px; list-style: none;
+    }
+    .nav-links a {
+      font-size: 0.9rem; font-weight: 500; color: var(--text-2);
+      text-decoration: none; padding: 8px 15px;
+      border-radius: var(--r-md); transition: var(--t);
+    }
+    .nav-links a:hover { color: var(--text-1); background: var(--surface-1); }
+    .nav-links a.active { color: var(--amber); background: var(--surface-1); }
+
+    .nav-actions { display: flex; align-items: center; gap: 8px; }
+
+    /* ── NAV USER GREETING ── */
+    .nav-username {
+      font-size: 0.9rem; font-weight: 500; color: var(--text-2);
+      /* FIX: prevent an overly long username blowing out the navbar */
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      max-width: 140px;
+    }
+
+    /* ── SIGNOUT FORM ── */
+    .signout-form { margin: 0; padding: 0; }
+    .signout-form .btn { cursor: pointer; font-family: 'Outfit', sans-serif; }
+
+    .nav-hamburger {
+      display: none; flex-direction: column; gap: 5px;
+      cursor: pointer; padding: 8px; border: none;
+      background: none; color: var(--text-1);
+      flex-shrink: 0;
+    }
+    .nav-hamburger span {
+      display: block; width: 22px; height: 2px;
+      background: var(--text-1); border-radius: 2px; transition: var(--t);
+    }
+
+    .mobile-menu {
+      position: fixed; top: var(--nav-h); left: 0; right: 0;
+      background: rgba(12,10,8,0.98); backdrop-filter: blur(24px);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 20px clamp(16px,5vw,64px) 28px;
+      display: none; flex-direction: column; gap: 4px; z-index: 999;
+      /* FIX: hard cap to viewport width — no horizontal bleed */
+      width: 100%; max-width: 100vw; overflow-x: hidden;
+    }
+    .mobile-menu.open { display: flex; }
+    .mobile-menu a {
+      font-size: 1rem; font-weight: 500; color: var(--text-2);
+      text-decoration: none; padding: 12px 14px;
+      border-radius: var(--r-md); transition: var(--t);
+    }
+    .mobile-menu a:hover { color: var(--text-1); background: var(--surface-1); }
+    .mobile-menu .m-actions {
+      display: flex; gap: 10px; margin-top: 12px; padding-top: 16px;
+      border-top: 1px solid var(--border-subtle);
+      flex-wrap: wrap; /* FIX: wrap so buttons don't overflow on 360px */
+    }
+    .mobile-menu .m-actions .btn { flex: 1; justify-content: center; min-width: 110px; }
+    .mobile-menu .m-actions .signout-form { flex: 1; }
+    .mobile-menu .m-actions .signout-form .btn { width: 100%; }
+
+    /* ========== BUTTONS ========== */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 8px; padding: 10px 22px; border-radius: var(--r-md);
+      font-family: 'Outfit', sans-serif; font-size: 0.9rem; font-weight: 600;
+      cursor: pointer; text-decoration: none; transition: var(--t);
+      border: none; outline: none; white-space: nowrap;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--amber), var(--orange));
+      color: #0C0A08; font-weight: 700;
+      box-shadow: 0 4px 20px rgba(245,158,11,0.3);
+    }
+    .btn-primary:hover { box-shadow: var(--shadow-amber); transform: translateY(-1px); filter: brightness(1.05); }
+    .btn-ghost {
+      background: transparent; color: var(--text-2);
+      border: 1px solid var(--border-subtle);
+    }
+    .btn-ghost:hover { background: var(--surface-1); color: var(--text-1); border-color: var(--border-strong); }
+    .btn-outline {
+      background: transparent; color: var(--amber);
+      border: 1px solid var(--border-strong);
+    }
+    .btn-outline:hover { background: var(--surface-1); border-color: var(--amber); }
+    .btn-lg { padding: 14px 32px; font-size: 1rem; border-radius: var(--r-lg); }
+    .btn-sm { padding: 7px 16px; font-size: 0.82rem; }
+
+    /* ========== CARD ========== */
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border-subtle);
+      border-radius: var(--r-xl); transition: var(--t);
+      position: relative; overflow: hidden;
+    }
+    .card::before {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(135deg, var(--surface-1) 0%, transparent 60%);
+      opacity: 0; transition: var(--t); pointer-events: none;
+    }
+    .card:hover {
+      border-color: var(--border-strong); transform: translateY(-3px);
+      box-shadow: 0 20px 48px rgba(0,0,0,0.4), 0 0 0 1px rgba(245,158,11,0.06);
+    }
+    .card:hover::before { opacity: 1; }
+
+    /* ========== FORMS ========== */
+    .form-group { display: flex; flex-direction: column; gap: 8px; }
+    .form-label { font-size: 0.85rem; font-weight: 600; color: var(--text-2); }
+    .input-wrap { position: relative; }
+    .input-icon {
+      position: absolute; left: 14px; top: 50%;
+      transform: translateY(-50%); color: var(--text-3); font-size: 0.9rem; pointer-events: none;
+    }
+    .form-control {
+      width: 100%; padding: 13px 16px;
+      background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle);
+      border-radius: var(--r-lg); color: var(--text-1);
+      font-family: 'Outfit', sans-serif; font-size: 0.95rem;
+      transition: var(--t); outline: none;
+    }
+    .form-control.has-icon { padding-left: 42px; }
+    .form-control::placeholder { color: var(--text-3); }
+    .form-control:focus {
+      border-color: var(--amber); background: rgba(245,158,11,0.04);
+      box-shadow: 0 0 0 3px rgba(245,158,11,0.12);
+    }
+
+    /* ========== BADGES ========== */
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 12px; border-radius: var(--r-pill);
+      font-size: 0.76rem; font-weight: 600; letter-spacing: 0.2px;
+    }
+    .badge-amber  { background: rgba(245,158,11,0.12); color: #FCD34D; border: 1px solid rgba(245,158,11,0.2); }
+    .badge-orange { background: rgba(249,115,22,0.12); color: #FDA975; border: 1px solid rgba(249,115,22,0.2); }
+    .badge-green  { background: rgba(16,185,129,0.12); color: #6EE7B7; border: 1px solid rgba(16,185,129,0.2); }
+    .badge-sky    { background: rgba(56,189,248,0.12); color: #7DD3FC; border: 1px solid rgba(56,189,248,0.2); }
+
+    /* ========== UTILS ========== */
+    .z1 { position: relative; z-index: 1; }
+    /* FIX: tighter min padding so content doesn't bleed on 360px */
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 clamp(16px,4vw,48px); }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 0.75rem; font-weight: 700; letter-spacing: 2.5px;
+      text-transform: uppercase; color: var(--amber); margin-bottom: 14px;
+    }
+    .eyebrow::before {
+      content: ''; display: block; width: 18px; height: 2px;
+      background: var(--amber); border-radius: 2px;
+    }
+    /* FIX: floor lowered from 2rem → 1.6rem so headings don't overflow at 320px */
+    .section-title {
+      font-family: 'Fraunces', serif;
+      font-size: clamp(1.6rem, 4.5vw, 3.2rem);
+      font-weight: 800; line-height: 1.15; letter-spacing: -1px; margin-bottom: 16px;
+    }
+    .section-sub { color: var(--text-2); font-size: 1.05rem; max-width: 520px; line-height: 1.75; }
+    .amber-text {
+      background: linear-gradient(120deg, var(--amber) 0%, var(--orange) 80%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+
+    /* ========== FOOTER ========== */
+    .site-footer {
+      position: relative; z-index: 1;
+      background: var(--bg-raised); border-top: 1px solid var(--border-subtle);
+      /* FIX: tighter horizontal padding on small screens */
+      padding: 72px clamp(16px,5vw,64px) 36px;
+    }
+    .footer-inner {
+      max-width: 1200px; margin: 0 auto;
+      display: grid; grid-template-columns: 2.2fr 1fr 1fr 1fr; gap: 52px;
+    }
+    .footer-desc {
+      color: var(--text-2); font-size: 0.9rem; line-height: 1.75;
+      max-width: 270px; margin-top: 16px;
+    }
+    .footer-col-title {
+      font-family: 'Fraunces', serif; font-size: 0.76rem; font-weight: 700;
+      letter-spacing: 2px; text-transform: uppercase; color: var(--text-3); margin-bottom: 18px;
+    }
+    .footer-links { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+    .footer-links a {
+      color: var(--text-2); text-decoration: none; font-size: 0.9rem;
+      transition: var(--t); display: flex; align-items: center; gap: 8px;
+    }
+    .footer-links a:hover { color: var(--amber); }
+    .footer-links a::before {
+      content: ''; width: 4px; height: 4px; border-radius: 50%;
+      background: var(--border-strong); transition: var(--t); flex-shrink: 0;
+    }
+    .footer-links a:hover::before { background: var(--amber); }
+    .footer-bottom {
+      max-width: 1200px; margin: 48px auto 0; padding-top: 24px;
+      border-top: 1px solid var(--border-subtle);
+      display: flex; justify-content: space-between; align-items: center;
+      flex-wrap: wrap; gap: 16px; font-size: 0.83rem; color: var(--text-3);
+    }
+    .footer-bottom a { color: var(--text-3); text-decoration: none; transition: var(--t); }
+    .footer-bottom a:hover { color: var(--text-2); }
+    .social-row { display: flex; gap: 10px; margin-top: 24px; flex-wrap: wrap; }
+    .social-ico {
+      width: 38px; height: 38px; border-radius: var(--r-md);
+      background: var(--surface-1); border: 1px solid var(--border-subtle);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text-2); text-decoration: none; font-size: 0.88rem; transition: var(--t);
+    }
+    .social-ico:hover { background: var(--surface-2); color: var(--amber); border-color: var(--border-strong); }
+
+    /* ========== ANIMATIONS ========== */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(28px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(-10px); }
+    }
+    @keyframes pulseDot {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0.5); }
+      50%       { box-shadow: 0 0 0 8px rgba(245,158,11,0); }
+    }
+    .fade-up { animation: fadeUp 0.65s cubic-bezier(0.4,0,0.2,1) both; }
+    .fade-in { animation: fadeIn 0.5s cubic-bezier(0.4,0,0.2,1) both; }
+    .d1{animation-delay:.1s} .d2{animation-delay:.2s} .d3{animation-delay:.3s}
+    .d4{animation-delay:.4s} .d5{animation-delay:.5s} .d6{animation-delay:.6s}
+
+    /* ========== RESPONSIVE ========== */
+    @media (max-width: 1024px) {
+      /* FIX: 2-col footer starts earlier */
+      .footer-inner { grid-template-columns: 1fr 1fr; gap: 36px; }
+    }
+    @media (max-width: 768px) {
+      .nav-links { display: none; }
+      /* FIX: hide ALL desktop action items on mobile — the hamburger takes over */
+      .nav-actions .btn-ghost,
+      .nav-actions .btn-primary,
+      .nav-actions .nav-username,
+      .nav-actions .signout-form { display: none; }
+      .nav-hamburger { display: flex; }
+    }
+    @media (max-width: 560px) {
+      .footer-bottom { flex-direction: column; text-align: center; }
+    }
+    /* FIX: collapse footer to 1-col on very small phones */
+    @media (max-width: 420px) {
+      .footer-inner { grid-template-columns: 1fr; gap: 24px; }
+      .site-footer  { padding-top: 48px; padding-bottom: 28px; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="navbar" id="navbar">
+    <a href="{% url 'home' %}" class="nav-logo">
+      <div class="logo-mark">T</div>
+      TradeLink<span class="logo-ng">NG</span>
+    </a>
+
+    <ul class="nav-links">
+      <li><a href="{% url 'home' %}"      class="{% block nav_home %}{% endblock %}">Home</a></li>
+      <li><a href=""                       class="{% block nav_jobs %}{% endblock %}">Find Work</a></li>
+      <li><a href=""                       class="{% block nav_trades %}{% endblock %}">Trades</a></li>
+      <li><a href=""                       class="{% block nav_employers %}{% endblock %}">For Employers</a></li>
+      <li><a href=""                       class="{% block nav_blog %}{% endblock %}">Resources</a></li>
+    </ul>
+
+    <div class="nav-actions">
+      {% if user.is_authenticated %}
+        <span class="nav-username">Hi, {{ user.username }}</span>
+        <form method="post" action="{% url 'signout' %}" class="signout-form">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-ghost">
+            <i class="fas fa-sign-out-alt"></i> Sign Out
+          </button>
+        </form>
+      {% else %}
+        <a href="{% url 'signin' %}"   class="btn btn-ghost">Sign In</a>
+        <a href="{% url 'register' %}" class="btn btn-primary">Get Started</a>
+      {% endif %}
+    </div>
+
+    <button class="nav-hamburger" id="hamburger" aria-label="Toggle menu">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="{% url 'home' %}">Home</a>
+    <a href="">Find Work</a>
+    <a href="">Trades</a>
+    <a href="">For Employers</a>
+    <a href="">Resources</a>
+    <div class="m-actions">
+      {% if user.is_authenticated %}
+        <form method="post" action="{% url 'signout' %}" class="signout-form">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-ghost">
+            <i class="fas fa-sign-out-alt"></i> Sign Out
+          </button>
+        </form>
+      {% else %}
+        <a href="{% url 'signin' %}"   class="btn btn-ghost">Sign In</a>
+        <a href="{% url 'register' %}" class="btn btn-primary">Get Started</a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% block content %}{% endblock %}
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div>
+        <a href="{% url 'home' %}" class="nav-logo" style="text-decoration:none;">
+          <div class="logo-mark">T</div>
+          TradeLink<span class="logo-ng">NG</span>
+        </a>
+        <p class="footer-desc">
+          Connecting Nigeria's skilled tradespeople with the clients and businesses who need them.
+          From Lagos to Kano — your skills deserve to be found.
+        </p>
+        <div class="social-row">
+          <a href="#" class="social-ico" aria-label="Twitter/X"><i class="fab fa-x-twitter"></i></a>
+          <a href="#" class="social-ico" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+          <a href="#" class="social-ico" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+          <a href="#" class="social-ico" aria-label="WhatsApp"><i class="fab fa-whatsapp"></i></a>
+        </div>
+      </div>
+      <div>
+        <p class="footer-col-title">For Workers</p>
+        <ul class="footer-links">
+          <li><a href="#">Browse Jobs</a></li>
+          <li><a href="#">Build Profile</a></li>
+          <li><a href="#">Rate Guide</a></li>
+          <li><a href="#">Skills Hub</a></li>
+          <li><a href="#">Success Stories</a></li>
+        </ul>
+      </div>
+      <div>
+        <p class="footer-col-title">For Employers</p>
+        <ul class="footer-links">
+          <li><a href="#">Post a Job</a></li>
+          <li><a href="#">Find Talent</a></li>
+          <li><a href="#">Pricing</a></li>
+          <li><a href="#">Verification</a></li>
+          <li><a href="#">Business Account</a></li>
+        </ul>
+      </div>
+      <div>
+        <p class="footer-col-title">Company</p>
+        <ul class="footer-links">
+          <li><a href="#">About Us</a></li>
+          <li><a href="#">Blog</a></li>
+          <li><a href="#">Careers</a></li>
+          <li><a href="#">Privacy Policy</a></li>
+          <li><a href="#">Terms of Use</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2025 TradeLink NG Ltd. All rights reserved. Built in Nigeria 🇳🇬</span>
+      <span style="display:flex;gap:20px;">
+        <a href="#">Privacy</a>
+        <a href="#">Terms</a>
+        <a href="#">Contact</a>
+      </span>
+    </div>
+  </footer>
+
+  <script>
+    const navbar = document.getElementById('navbar');
+    window.addEventListener('scroll', () => {
+      navbar.classList.toggle('scrolled', window.scrollY > 20);
+    }, { passive: true });
+
+    const hamburger = document.getElementById('hamburger');
+    const mobileMenu = document.getElementById('mobileMenu');
+    hamburger.addEventListener('click', () => {
+      const isOpen = mobileMenu.classList.toggle('open');
+      const [s1, s2, s3] = hamburger.querySelectorAll('span');
+      s1.style.transform = isOpen ? 'translateY(7px) rotate(45deg)'  : '';
+      s2.style.opacity   = isOpen ? '0' : '';
+      s3.style.transform = isOpen ? 'translateY(-7px) rotate(-45deg)' : '';
+    });
+    document.addEventListener('click', (e) => {
+      if (!navbar.contains(e.target) && !mobileMenu.contains(e.target)) {
+        mobileMenu.classList.remove('open');
+        hamburger.querySelectorAll('span').forEach(s => { s.style.transform = ''; s.style.opacity = ''; });
+      }
+    });
+  </script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

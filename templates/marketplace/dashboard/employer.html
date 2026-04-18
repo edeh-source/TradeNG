@@ -1,0 +1,1017 @@
+{% extends "base.html" %}
+{% block title %}Employer Dashboard — {{ employer.company_name|default:request.user.username }} — TradeLink NG{% endblock %}
+{% block nav_employers %}active{% endblock %}
+
+{# ─────────────────────────────────────────────────────────────────────────────
+   Context — EmployerDashboardView:
+     employer      — EmployerProfile (user, company_name, company_type,
+                     industry, logo, state, lga, is_verified, about)
+     jobs          — QuerySet[Job] annotated with app_count, ordered -created
+                     Fields: id, title, status, job_type, pay_type, pay_min,
+                     pay_max, state, lga, slots, deadline, created,
+                     applications_count, views_count, trade_category
+     recent_apps   — QuerySet[JobApplication] status=PENDING, [:8]
+                     select_related: worker__user, job
+                     Fields: id, applied_at, clip_match_score,
+                     worker.user.username / get_full_name,
+                     job.title, job.pk
+     unread_count  — int (navbar badge)
+───────────────────────────────────────────────────────────────────────────── #}
+
+{% block extra_head %}
+<style>
+/* =====================================================
+   EMPLOYER DASHBOARD — TradeLink NG
+   Context: employer, jobs, recent_apps, unread_count
+===================================================== */
+
+/* ── PAGE SHELL ── */
+.ed-page { padding-top: var(--nav-h); position: relative; z-index: 1; }
+
+/* ── HERO / HEADER BAND ── */
+.ed-hero {
+  padding: 44px 0 40px;
+  background: linear-gradient(
+    160deg,
+    rgba(245,158,11,0.06) 0%,
+    rgba(249,115,22,0.03) 50%,
+    transparent 100%
+  );
+  border-bottom: 1px solid var(--border-subtle);
+  position: relative; overflow: hidden;
+}
+.ed-hero::before {
+  content: '';
+  position: absolute; top: -100px; right: -80px;
+  width: 480px; height: 480px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(245,158,11,0.08), transparent 65%);
+  pointer-events: none;
+}
+.ed-hero-inner {
+  display: flex; align-items: flex-start;
+  justify-content: space-between; gap: 24px; flex-wrap: wrap;
+}
+
+/* Company identity */
+.ed-identity { display: flex; align-items: center; gap: 20px; }
+.ed-logo {
+  width: 72px; height: 72px; border-radius: 20px; flex-shrink: 0;
+  background: var(--surface-1); border: 1px solid var(--border-subtle);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.8rem; overflow: hidden;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+}
+.ed-logo img { width: 100%; height: 100%; object-fit: cover; }
+.ed-greeting {
+  font-size: 0.82rem; color: var(--text-3); margin-bottom: 4px;
+  display: flex; align-items: center; gap: 6px;
+}
+.ed-company-name {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(1.4rem, 3.5vw, 2rem);
+  font-weight: 900; letter-spacing: -0.5px;
+  color: var(--text-1); line-height: 1.1; margin-bottom: 8px;
+}
+.ed-badges { display: flex; flex-wrap: wrap; gap: 7px; }
+.ed-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 11px; border-radius: var(--r-pill);
+  font-size: 0.73rem; font-weight: 700;
+}
+.ed-badge-verified {
+  background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25);
+  color: var(--emerald);
+}
+.ed-badge-type {
+  background: var(--surface-1); border: 1px solid var(--border-subtle);
+  color: var(--text-2);
+}
+
+/* Hero CTA */
+.ed-hero-actions { display: flex; gap: 10px; flex-shrink: 0; flex-wrap: wrap; align-items: flex-start; }
+.ed-btn-primary {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 22px;
+  background: linear-gradient(135deg, var(--amber), var(--orange));
+  color: #0C0A08; font-family: 'Outfit', sans-serif;
+  font-size: 0.92rem; font-weight: 700; border-radius: var(--r-md);
+  text-decoration: none; transition: var(--t);
+  box-shadow: 0 4px 20px rgba(245,158,11,0.28); white-space: nowrap;
+}
+.ed-btn-primary:hover { filter: brightness(1.06); transform: translateY(-1px); box-shadow: 0 8px 28px rgba(245,158,11,0.38); }
+.ed-btn-ghost {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 22px;
+  background: transparent; border: 1px solid var(--border-subtle);
+  color: var(--text-2); font-family: 'Outfit', sans-serif;
+  font-size: 0.92rem; font-weight: 600; border-radius: var(--r-md);
+  text-decoration: none; transition: var(--t); white-space: nowrap;
+}
+.ed-btn-ghost:hover { background: var(--surface-1); color: var(--text-1); border-color: var(--border-strong); }
+
+/* ── STATS ROW ── */
+.ed-stats-band {
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-raised);
+}
+.ed-stats-inner {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+}
+.ed-stat {
+  padding: 24px 28px;
+  border-right: 1px solid var(--border-subtle);
+  position: relative;
+}
+.ed-stat:last-child { border-right: none; }
+.ed-stat-number {
+  font-family: 'Fraunces', serif; font-size: 2rem; font-weight: 900;
+  line-height: 1;
+  background: linear-gradient(135deg, var(--amber), var(--orange));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.ed-stat-label {
+  font-size: 0.78rem; color: var(--text-3); font-weight: 600;
+  text-transform: uppercase; letter-spacing: 1px; margin-top: 5px;
+}
+.ed-stat-sub {
+  font-size: 0.75rem; color: var(--text-3); margin-top: 2px;
+}
+
+/* ── BODY LAYOUT ── */
+.ed-body {
+  padding: 44px 0 80px;
+}
+.ed-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 44px; align-items: start;
+}
+
+/* ── SECTION HEADER ── */
+.ed-section-head {
+  display: flex; align-items: center; gap: 10px;
+  font-family: 'Fraunces', serif; font-size: 1.05rem; font-weight: 800;
+  color: var(--text-1); margin-bottom: 18px;
+  padding-bottom: 13px; border-bottom: 1px solid var(--border-subtle);
+}
+.ed-section-head i { color: var(--amber); font-size: 0.86rem; }
+.ed-section-count {
+  margin-left: auto; font-family: 'Outfit', sans-serif;
+  font-size: 0.76rem; font-weight: 600; color: var(--amber);
+  background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2);
+  border-radius: var(--r-pill); padding: 2px 9px;
+}
+.ed-section-link {
+  margin-left: auto; font-family: 'Outfit', sans-serif;
+  font-size: 0.78rem; font-weight: 600; color: var(--text-3);
+  text-decoration: none; transition: var(--t);
+  display: flex; align-items: center; gap: 4px;
+}
+.ed-section-link:hover { color: var(--amber); }
+
+/* ── JOB CARDS ── */
+.ed-jobs-list { display: flex; flex-direction: column; gap: 12px; }
+
+.ed-job-card {
+  background: var(--bg-card); border: 1px solid var(--border-subtle);
+  border-radius: var(--r-xl); overflow: hidden; transition: var(--t);
+  position: relative;
+}
+.ed-job-card:hover { border-color: var(--border-strong); transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.35); }
+
+.ed-job-card-inner {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px; align-items: start;
+  padding: 20px 22px;
+}
+
+/* Status stripe on left edge */
+.ed-job-card[data-status="active"]  { border-left: 3px solid var(--emerald); }
+.ed-job-card[data-status="paused"]  { border-left: 3px solid var(--amber); }
+.ed-job-card[data-status="draft"]   { border-left: 3px solid var(--border-strong); }
+.ed-job-card[data-status="filled"]  { border-left: 3px solid var(--sky); }
+.ed-job-card[data-status="closed"]  { border-left: 3px solid rgba(239,68,68,0.5); }
+.ed-job-card[data-status="expired"] { border-left: 3px solid rgba(239,68,68,0.4); }
+
+.ed-job-title {
+  font-family: 'Fraunces', serif; font-size: 1rem; font-weight: 800;
+  color: var(--text-1); margin-bottom: 6px;
+  text-decoration: none; transition: var(--t); display: block;
+}
+.ed-job-title:hover { color: var(--amber); }
+
+.ed-job-meta {
+  display: flex; flex-wrap: wrap; gap: 12px;
+  font-size: 0.8rem; color: var(--text-3); margin-bottom: 10px;
+}
+.ed-job-meta span { display: flex; align-items: center; gap: 5px; }
+.ed-job-meta i { font-size: 0.68rem; }
+
+.ed-job-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.ed-job-tag {
+  display: inline-flex; padding: 3px 9px;
+  background: var(--surface-1); border: 1px solid var(--border-subtle);
+  border-radius: var(--r-pill); font-size: 0.72rem; font-weight: 500;
+  color: var(--text-2);
+}
+.ed-job-tag.amber {
+  background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.2);
+  color: var(--amber-light);
+}
+.ed-job-tag.green {
+  background: rgba(16,185,129,0.08); border-color: rgba(16,185,129,0.2);
+  color: var(--emerald);
+}
+.ed-job-tag.sky {
+  background: rgba(56,189,248,0.08); border-color: rgba(56,189,248,0.2);
+  color: var(--sky);
+}
+.ed-job-tag.red {
+  background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.2);
+  color: #f87171;
+}
+
+/* Right column: actions + stats */
+.ed-job-actions {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
+  flex-shrink: 0;
+}
+.ed-job-app-count {
+  text-align: center;
+  background: var(--surface-1); border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg); padding: 10px 14px;
+}
+.ed-job-app-num {
+  font-family: 'Fraunces', serif; font-size: 1.4rem; font-weight: 900;
+  color: var(--amber); line-height: 1; display: block;
+}
+.ed-job-app-label {
+  font-size: 0.67rem; color: var(--text-3); font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.8px;
+}
+
+.ed-job-btn-row { display: flex; gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
+.ed-job-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 13px; border-radius: var(--r-md);
+  font-family: 'Outfit', sans-serif; font-size: 0.77rem; font-weight: 600;
+  text-decoration: none; transition: var(--t); cursor: pointer;
+  border: 1px solid var(--border-subtle); background: transparent;
+  color: var(--text-2); white-space: nowrap;
+}
+.ed-job-btn:hover { background: var(--surface-1); color: var(--text-1); border-color: var(--border-strong); }
+.ed-job-btn.primary {
+  background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.25);
+  color: var(--amber);
+}
+.ed-job-btn.primary:hover { background: rgba(245,158,11,0.18); }
+.ed-job-btn.danger {
+  background: rgba(239,68,68,0.07); border-color: rgba(239,68,68,0.2);
+  color: #f87171;
+}
+.ed-job-btn.danger:hover { background: rgba(239,68,68,0.14); }
+
+/* Toggle status button */
+.ed-toggle-btn {
+  font-size: 0.72rem; font-weight: 700; padding: 4px 11px;
+  border-radius: var(--r-pill); border: none; cursor: pointer;
+  font-family: 'Outfit', sans-serif; transition: var(--t);
+}
+.ed-toggle-btn.active {
+  background: rgba(16,185,129,0.12); color: var(--emerald);
+  border: 1px solid rgba(16,185,129,0.25);
+}
+.ed-toggle-btn.active:hover { background: rgba(16,185,129,0.2); }
+.ed-toggle-btn.paused {
+  background: rgba(245,158,11,0.1); color: var(--amber);
+  border: 1px solid rgba(245,158,11,0.25);
+}
+.ed-toggle-btn.paused:hover { background: rgba(245,158,11,0.18); }
+
+/* Empty state */
+.ed-empty {
+  background: var(--bg-card); border: 1px dashed var(--border-strong);
+  border-radius: var(--r-xl); padding: 52px 32px; text-align: center;
+}
+.ed-empty-icon {
+  width: 64px; height: 64px; border-radius: 20px; margin: 0 auto 20px;
+  background: var(--surface-1); border: 1px solid var(--border-subtle);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.6rem; color: var(--amber);
+}
+.ed-empty-title {
+  font-family: 'Fraunces', serif; font-size: 1.15rem; font-weight: 800;
+  color: var(--text-1); margin-bottom: 8px;
+}
+.ed-empty-sub {
+  font-size: 0.88rem; color: var(--text-3); margin-bottom: 24px; line-height: 1.65;
+}
+
+/* ── PENDING APPLICATIONS (sidebar) ── */
+.ed-app-list { display: flex; flex-direction: column; gap: 10px; }
+.ed-app-card {
+  background: var(--bg-card); border: 1px solid var(--border-subtle);
+  border-radius: var(--r-xl); padding: 16px 18px; transition: var(--t);
+}
+.ed-app-card:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+
+.ed-app-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.ed-app-avatar {
+  width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--amber-dark), var(--orange));
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Fraunces', serif; font-weight: 800; font-size: 0.9rem;
+  color: #0C0A08;
+}
+.ed-app-name { font-size: 0.88rem; font-weight: 700; color: var(--text-1); margin-bottom: 1px; }
+.ed-app-time { font-size: 0.72rem; color: var(--text-3); }
+.ed-app-score {
+  margin-left: auto; flex-shrink: 0;
+  font-family: 'Fraunces', serif; font-size: 0.95rem; font-weight: 900;
+  color: var(--amber);
+}
+.ed-app-score span { font-family: 'Outfit', sans-serif; font-size: 0.65rem; color: var(--text-3); font-weight: 500; }
+
+.ed-app-job {
+  font-size: 0.78rem; color: var(--text-2); margin-bottom: 10px;
+  display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ed-app-job i { font-size: 0.65rem; color: var(--text-3); margin-right: 4px; }
+
+.ed-app-actions { display: flex; gap: 6px; }
+.ed-app-btn {
+  flex: 1; padding: 6px; border-radius: var(--r-md);
+  font-family: 'Outfit', sans-serif; font-size: 0.73rem; font-weight: 700;
+  text-decoration: none; text-align: center; transition: var(--t);
+  border: 1px solid var(--border-subtle); cursor: pointer; background: transparent;
+  color: var(--text-2);
+}
+.ed-app-btn:hover { background: var(--surface-1); color: var(--text-1); }
+.ed-app-btn.amber {
+  background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.25);
+  color: var(--amber);
+}
+.ed-app-btn.amber:hover { background: rgba(245,158,11,0.18); }
+
+.ed-apps-empty {
+  background: var(--bg-card); border: 1px solid var(--border-subtle);
+  border-radius: var(--r-xl); padding: 32px 20px; text-align: center;
+  color: var(--text-3); font-size: 0.88rem;
+}
+.ed-apps-empty i { font-size: 1.6rem; color: var(--border-strong); display: block; margin-bottom: 10px; }
+
+/* ── SIDEBAR CARDS ── */
+.ed-sidebar { display: flex; flex-direction: column; gap: 18px; }
+
+.ed-info-card {
+  background: var(--bg-card); border: 1px solid var(--border-subtle);
+  border-radius: var(--r-xl); padding: 20px; overflow: hidden; position: relative;
+}
+.ed-info-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(245,158,11,0.04), transparent 70%);
+  pointer-events: none;
+}
+.ed-info-card-title {
+  font-family: 'Fraunces', serif; font-size: 0.92rem; font-weight: 800;
+  color: var(--text-1); margin-bottom: 16px;
+  display: flex; align-items: center; gap: 8px;
+}
+.ed-info-card-title i { color: var(--amber); font-size: 0.8rem; }
+
+/* Quick links */
+.ed-quick-link {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; border-radius: var(--r-md);
+  text-decoration: none; color: var(--text-2);
+  font-size: 0.84rem; font-weight: 500; transition: var(--t);
+  margin-bottom: 3px;
+}
+.ed-quick-link:last-child { margin-bottom: 0; }
+.ed-quick-link:hover { background: var(--surface-1); color: var(--text-1); }
+.ed-quick-link i { width: 16px; text-align: center; color: var(--text-3); font-size: 0.76rem; }
+.ed-quick-link:hover i { color: var(--amber); }
+.ed-quick-badge {
+  margin-left: auto; font-size: 0.7rem; font-weight: 700;
+  padding: 2px 8px; border-radius: var(--r-pill);
+  background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2);
+  color: var(--amber);
+}
+
+/* Profile completeness nudge */
+.ed-nudge {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 14px; border-radius: var(--r-lg);
+  background: rgba(56,189,248,0.05); border: 1px solid rgba(56,189,248,0.15);
+}
+.ed-nudge-icon {
+  width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0;
+  background: rgba(56,189,248,0.1); border: 1px solid rgba(56,189,248,0.2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.78rem; color: var(--sky);
+}
+.ed-nudge-text { font-size: 0.79rem; color: var(--text-2); line-height: 1.6; }
+.ed-nudge-text a { color: var(--sky); text-decoration: none; font-weight: 600; }
+.ed-nudge-text a:hover { text-decoration: underline; }
+
+/* ── MESSAGES ── */
+.ed-messages {
+  position: fixed; top: calc(var(--nav-h) + 16px); right: 20px;
+  z-index: 3000; display: flex; flex-direction: column; gap: 10px;
+  max-width: 360px; pointer-events: none;
+}
+.ed-msg {
+  padding: 13px 18px; border-radius: var(--r-lg);
+  font-size: 0.87rem; font-weight: 600;
+  display: flex; align-items: center; gap: 10px;
+  box-shadow: var(--shadow-md); pointer-events: all; cursor: pointer;
+  animation: edMsgSlide 0.35s var(--ease) both;
+}
+@keyframes edMsgSlide { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
+.ed-msg-success { background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.3); color: #6ee7b7; }
+.ed-msg-error   { background: rgba(239,68,68,0.15);  border: 1px solid rgba(239,68,68,0.3);  color: #fca5a5; }
+.ed-msg-info    { background: rgba(56,189,248,0.12); border: 1px solid rgba(56,189,248,0.25); color: var(--sky); }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 1024px) {
+  .ed-layout { grid-template-columns: 1fr; }
+  .ed-sidebar { order: -1; }
+  .ed-stats-inner { grid-template-columns: repeat(2, 1fr); }
+  .ed-stat { border-bottom: 1px solid var(--border-subtle); }
+  .ed-stat:nth-child(2) { border-right: none; }
+  .ed-stat:nth-child(3) { border-bottom: none; }
+  .ed-stat:last-child   { border-right: none; border-bottom: none; }
+}
+@media (max-width: 768px) {
+  .ed-hero { padding: 32px 0 28px; }
+  .ed-hero-inner { flex-direction: column; gap: 20px; }
+  .ed-hero-actions { width: 100%; }
+  .ed-btn-primary, .ed-btn-ghost { flex: 1; justify-content: center; }
+  .ed-job-card-inner { grid-template-columns: 1fr; }
+  .ed-job-actions { flex-direction: row; align-items: center; width: 100%; justify-content: space-between; }
+  .ed-job-app-count { display: flex; align-items: center; gap: 6px; padding: 6px 12px; }
+  .ed-job-app-num { font-size: 1rem; }
+}
+@media (max-width: 560px) {
+  .ed-stats-inner { grid-template-columns: repeat(2, 1fr); }
+  .ed-identity { flex-direction: row; }
+  .ed-logo { width: 56px; height: 56px; font-size: 1.4rem; }
+  .ed-company-name { font-size: 1.25rem; }
+  .ed-messages { right: 10px; left: 10px; max-width: none; }
+  .ed-body { padding: 28px 0 56px; }
+}
+@media (max-width: 380px) {
+  .ed-hero-actions { flex-direction: column; }
+  .ed-btn-primary, .ed-btn-ghost { width: 100%; justify-content: center; }
+  .ed-job-meta { gap: 8px; font-size: 0.76rem; }
+}
+</style>
+{% endblock %}
+
+
+{% block content %}
+
+{# ── Floating messages ── #}
+{% if messages %}
+<div class="ed-messages">
+  {% for message in messages %}
+  <div class="ed-msg ed-msg-{{ message.tags }}" onclick="this.remove()">
+    {% if 'success' in message.tags %}<i class="fas fa-circle-check"></i>
+    {% elif 'error' in message.tags %}<i class="fas fa-circle-exclamation"></i>
+    {% else %}<i class="fas fa-circle-info"></i>{% endif %}
+    {{ message }}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="ed-page">
+
+  {# ── HERO ── #}
+  <section class="ed-hero">
+    <div class="container">
+      <div class="ed-hero-inner">
+
+        {# Company identity #}
+        <div class="ed-identity fade-up">
+          <div class="ed-logo">
+            {% if employer.logo %}
+              <img src="{{ employer.logo.url }}" alt="{{ employer.company_name }}">
+            {% else %}
+              <i class="fas fa-building" style="color:var(--amber);"></i>
+            {% endif %}
+          </div>
+          <div>
+            <div class="ed-greeting">
+              <i class="fas fa-gauge-high" style="font-size:0.7rem;"></i>
+              Employer Dashboard
+            </div>
+            <div class="ed-company-name">
+              {{ employer.company_name|default:request.user.get_full_name|default:request.user.username }}
+            </div>
+            <div class="ed-badges">
+              {% if employer.is_verified %}
+              <span class="ed-badge ed-badge-verified">
+                <i class="fas fa-circle-check"></i> Verified
+              </span>
+              {% endif %}
+              <span class="ed-badge ed-badge-type">
+                {{ employer.get_company_type_display }}
+              </span>
+              {% if employer.industry %}
+              <span class="ed-badge ed-badge-type">
+                {{ employer.industry }}
+              </span>
+              {% endif %}
+              {% if employer.state %}
+              <span class="ed-badge ed-badge-type">
+                <i class="fas fa-location-dot" style="font-size:0.65rem;"></i>
+                {{ employer.get_state_display }}
+              </span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        {# CTAs #}
+        <div class="ed-hero-actions fade-up d1">
+          <a href="{% url 'marketplace:job_create' %}" class="ed-btn-primary">
+            <i class="fas fa-plus"></i> Post a Job
+          </a>
+          <a href="{% url 'marketplace:employer_profile_edit' %}" class="ed-btn-ghost">
+            <i class="fas fa-pen-to-square"></i> Edit Profile
+          </a>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  {# ── STATS BAND ── #}
+  <div class="ed-stats-band">
+    <div class="container">
+      <div class="ed-stats-inner">
+
+        {# Total jobs #}
+        <div class="ed-stat">
+          <div class="ed-stat-number">{{ jobs|length }}</div>
+          <div class="ed-stat-label">Total Jobs</div>
+          <div class="ed-stat-sub">All time</div>
+        </div>
+
+        {# Active jobs #}
+        <div class="ed-stat">
+          <div class="ed-stat-number">
+            {% with active=jobs|dictsortreversed:"status" %}
+            {{ jobs.all|length }}
+            {% endwith %}
+            {# Count active jobs inline #}
+            {% with count=0 %}
+              {% for job in jobs %}{% if job.status == 'active' %}
+                {% with count=count|add:1 %}{% endwith %}
+              {% endif %}{% endfor %}
+            {% endwith %}
+            {{ jobs|length }}
+          </div>
+          {# Simpler active count via template tag iteration #}
+          <div class="ed-stat-number" id="activeJobCount">
+            {% with ac=0 %}
+              {% for job in jobs %}{% if job.status == 'active' %}{% with ac=ac|add:"1" %}{% endwith %}{% endif %}{% endfor %}
+              {# fallback: show from annotated queryset #}
+            {% endwith %}
+          </div>
+          <div class="ed-stat-label">Active Listings</div>
+          <div class="ed-stat-sub">Currently live</div>
+        </div>
+
+        {# Pending applications #}
+        <div class="ed-stat">
+          <div class="ed-stat-number">{{ recent_apps|length }}</div>
+          <div class="ed-stat-label">Pending Review</div>
+          <div class="ed-stat-sub">Awaiting response</div>
+        </div>
+
+        {# Total applications across all jobs #}
+        <div class="ed-stat">
+          <div class="ed-stat-number">
+            {% with total=0 %}
+              {% for job in jobs %}{% with total=total|add:job.app_count %}{% endwith %}{% endfor %}
+              {% for job in jobs %}{{ job.applications_count|add:0 }}{% endfor %}
+            {% endwith %}
+          </div>
+          <div class="ed-stat-label">Total Applications</div>
+          <div class="ed-stat-sub">Across all jobs</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  {# ── BODY ── #}
+  <section class="ed-body">
+    <div class="container">
+      <div class="ed-layout">
+
+        {# ── LEFT COLUMN — Job Listings ── #}
+        <div>
+
+          <div class="ed-section-head">
+            <i class="fas fa-briefcase"></i> Your Job Listings
+            {% if jobs %}
+            <span class="ed-section-count">{{ jobs|length }}</span>
+            {% endif %}
+            <a href="{% url 'marketplace:job_create' %}" class="ed-section-link" style="margin-left:auto;">
+              <i class="fas fa-plus"></i> Post New
+            </a>
+          </div>
+
+          {% if jobs %}
+          <div class="ed-jobs-list">
+            {% for job in jobs %}
+            <div class="ed-job-card fade-up" data-status="{{ job.status }}" data-job-id="{{ job.pk }}">
+              <div class="ed-job-card-inner">
+
+                {# Left: job details #}
+                <div>
+                  <a href="{% url 'marketplace:job_detail' pk=job.pk %}" class="ed-job-title">
+                    {{ job.title }}
+                  </a>
+
+                  <div class="ed-job-meta">
+                    {% if job.state %}
+                    <span><i class="fas fa-location-dot"></i>{{ job.get_state_display }}{% if job.lga %}, {{ job.lga }}{% endif %}</span>
+                    {% endif %}
+                    <span><i class="fas fa-clock"></i>{{ job.get_job_type_display }}</span>
+                    {% if job.pay_min or job.pay_max %}
+                    <span>
+                      <i class="fas fa-naira-sign"></i>
+                      {% if job.pay_min and job.pay_max %}
+                        ₦{{ job.pay_min|floatformat:0 }} – ₦{{ job.pay_max|floatformat:0 }}
+                      {% elif job.pay_min %}From ₦{{ job.pay_min|floatformat:0 }}
+                      {% else %}Up to ₦{{ job.pay_max|floatformat:0 }}
+                      {% endif %}
+                    </span>
+                    {% endif %}
+                    <span><i class="fas fa-eye"></i>{{ job.views_count }} view{{ job.views_count|pluralize }}</span>
+                    <span><i class="fas fa-calendar-plus"></i>{{ job.created|timesince }} ago</span>
+                    {% if job.deadline %}
+                    <span><i class="fas fa-calendar-xmark"></i>Closes {{ job.deadline|date:"d M Y" }}</span>
+                    {% endif %}
+                  </div>
+
+                  <div class="ed-job-tags">
+                    {# Status badge #}
+                    {% if job.status == 'active' %}
+                      <span class="ed-job-tag green"><i class="fas fa-circle" style="font-size:0.45rem;"></i> Active</span>
+                    {% elif job.status == 'paused' %}
+                      <span class="ed-job-tag amber"><i class="fas fa-pause" style="font-size:0.55rem;"></i> Paused</span>
+                    {% elif job.status == 'draft' %}
+                      <span class="ed-job-tag"><i class="fas fa-pen" style="font-size:0.55rem;"></i> Draft</span>
+                    {% elif job.status == 'filled' %}
+                      <span class="ed-job-tag sky"><i class="fas fa-check" style="font-size:0.55rem;"></i> Filled</span>
+                    {% elif job.status == 'expired' %}
+                      <span class="ed-job-tag red"><i class="fas fa-clock" style="font-size:0.55rem;"></i> Expired</span>
+                    {% else %}
+                      <span class="ed-job-tag red">{{ job.get_status_display }}</span>
+                    {% endif %}
+
+                    {% if job.trade_category %}
+                    <span class="ed-job-tag amber">{{ job.trade_category.name }}</span>
+                    {% endif %}
+
+                    {% if job.slots > 1 %}
+                    <span class="ed-job-tag">{{ job.slots }} slots</span>
+                    {% endif %}
+
+                    {% if job.is_remote %}
+                    <span class="ed-job-tag sky"><i class="fas fa-wifi" style="font-size:0.55rem;"></i> Remote</span>
+                    {% endif %}
+                  </div>
+                </div>
+
+                {# Right: stats + actions #}
+                <div class="ed-job-actions">
+                  {# Application count pill #}
+                  <div class="ed-job-app-count">
+                    <span class="ed-job-app-num">{{ job.app_count }}</span>
+                    <span class="ed-job-app-label">Application{{ job.app_count|pluralize }}</span>
+                  </div>
+
+                  {# Action buttons #}
+                  <div class="ed-job-btn-row">
+                    {% if job.app_count > 0 %}
+                    <a href="{% url 'marketplace:job_applications' pk=job.pk %}"
+                       class="ed-job-btn primary">
+                      <i class="fas fa-users"></i> Review
+                    </a>
+                    {% endif %}
+
+                    <a href="{% url 'marketplace:job_matches' pk=job.pk %}"
+                       class="ed-job-btn" title="View AI-matched workers">
+                      <i class="fas fa-brain"></i> Matches
+                    </a>
+
+                    <a href="{% url 'marketplace:job_edit' pk=job.pk %}"
+                       class="ed-job-btn">
+                      <i class="fas fa-pen"></i> Edit
+                    </a>
+
+                    {# Toggle Active / Paused (AJAX) #}
+                    {% if job.status == 'active' or job.status == 'paused' %}
+                    <button
+                      class="ed-toggle-btn {% if job.status == 'active' %}active{% else %}paused{% endif %}"
+                      data-toggle-url="{% url 'marketplace:job_toggle_status' pk=job.pk %}"
+                      onclick="toggleJobStatus(this)"
+                      title="{% if job.status == 'active' %}Pause this job{% else %}Reactivate this job{% endif %}"
+                    >
+                      {% if job.status == 'active' %}
+                        <i class="fas fa-pause" style="font-size:0.6rem;"></i> Pause
+                      {% else %}
+                        <i class="fas fa-play" style="font-size:0.6rem;"></i> Activate
+                      {% endif %}
+                    </button>
+                    {% endif %}
+
+                    {# Delete (with confirm) #}
+                    <form method="POST"
+                          action="{% url 'marketplace:job_delete' pk=job.pk %}"
+                          style="display:inline;"
+                          onsubmit="return confirm('Delete \'{{ job.title|escapejs }}\'? This cannot be undone.');">
+                      {% csrf_token %}
+                      <button type="submit" class="ed-job-btn danger" title="Delete job">
+                        <i class="fas fa-trash-can"></i>
+                      </button>
+                    </form>
+                  </div>
+                </div>
+
+              </div>{# /card-inner #}
+            </div>{# /job-card #}
+            {% endfor %}
+          </div>
+
+          {% else %}
+          {# Empty state #}
+          <div class="ed-empty fade-up">
+            <div class="ed-empty-icon"><i class="fas fa-briefcase"></i></div>
+            <div class="ed-empty-title">No jobs posted yet</div>
+            <div class="ed-empty-sub">
+              Post your first job listing and our AI will start matching you with
+              the best skilled workers in Nigeria within minutes.
+            </div>
+            <a href="{% url 'marketplace:job_create' %}" class="ed-btn-primary" style="display:inline-flex;">
+              <i class="fas fa-plus"></i> Post Your First Job
+            </a>
+          </div>
+          {% endif %}
+
+        </div>{# /left column #}
+
+        {# ── RIGHT SIDEBAR ── #}
+        <div class="ed-sidebar">
+
+          {# Pending Applications #}
+          <div>
+            <div class="ed-section-head">
+              <i class="fas fa-inbox"></i> Pending Applications
+              {% if recent_apps %}
+              <span class="ed-section-count">{{ recent_apps|length }}</span>
+              {% endif %}
+            </div>
+
+            {% if recent_apps %}
+            <div class="ed-app-list">
+              {% for app in recent_apps %}
+              <div class="ed-app-card fade-up">
+                <div class="ed-app-header">
+                  <div class="ed-app-avatar">
+                    {{ app.worker.user.get_full_name|default:app.worker.user.username|slice:":1"|upper }}
+                  </div>
+                  <div style="min-width:0;flex:1;">
+                    <div class="ed-app-name">
+                      {{ app.worker.user.get_full_name|default:app.worker.user.username }}
+                    </div>
+                    <div class="ed-app-time">{{ app.applied_at|timesince }} ago</div>
+                  </div>
+                  {% if app.clip_match_score %}
+                  <div class="ed-app-score">
+                    {{ app.clip_match_score|floatformat:0 }}<span>% match</span>
+                  </div>
+                  {% endif %}
+                </div>
+
+                <div class="ed-app-job">
+                  <i class="fas fa-briefcase"></i>{{ app.job.title }}
+                </div>
+
+                <div class="ed-app-actions">
+                  <a href="{% url 'marketplace:job_applications' pk=app.job.pk %}"
+                     class="ed-app-btn amber">
+                    <i class="fas fa-eye" style="font-size:0.68rem;"></i> Review
+                  </a>
+                  <a href="{% url 'marketplace:worker_profile_public' pk=app.worker.pk %}"
+                     class="ed-app-btn">
+                    <i class="fas fa-user" style="font-size:0.68rem;"></i> Profile
+                  </a>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+
+            {% else %}
+            <div class="ed-apps-empty fade-up">
+              <i class="fas fa-inbox"></i>
+              No pending applications right now.
+            </div>
+            {% endif %}
+          </div>
+
+          {# Quick Links #}
+          <div class="ed-info-card fade-up">
+            <div class="ed-info-card-title">
+              <i class="fas fa-link"></i> Quick Links
+            </div>
+            <a href="{% url 'marketplace:job_create' %}" class="ed-quick-link">
+              <i class="fas fa-plus"></i> Post a New Job
+            </a>
+            <a href="{% url 'marketplace:employer_profile_edit' %}" class="ed-quick-link">
+              <i class="fas fa-pen-to-square"></i> Edit Company Profile
+            </a>
+            <a href="{% url 'marketplace:employer_profile_public' pk=employer.pk %}" class="ed-quick-link">
+              <i class="fas fa-eye"></i> View Public Profile
+            </a>
+            <a href="{% url 'marketplace:notifications' %}" class="ed-quick-link">
+              <i class="fas fa-bell"></i> Notifications
+              {% if unread_count %}
+              <span class="ed-quick-badge">{{ unread_count }}</span>
+              {% endif %}
+            </a>
+            <a href="{% url 'marketplace:job_list' %}" class="ed-quick-link">
+              <i class="fas fa-briefcase"></i> Browse All Jobs
+            </a>
+          </div>
+
+          {# Profile completeness nudge #}
+          {% if not employer.about or not employer.logo or not employer.industry %}
+          <div class="ed-info-card fade-up">
+            <div class="ed-info-card-title">
+              <i class="fas fa-circle-info"></i> Complete Your Profile
+            </div>
+            <div class="ed-nudge">
+              <div class="ed-nudge-icon"><i class="fas fa-lightbulb"></i></div>
+              <div class="ed-nudge-text">
+                A complete company profile with logo and description
+                attracts <strong>3× more qualified applicants</strong>.
+                <a href="{% url 'marketplace:employer_profile_edit' %}">Update now →</a>
+              </div>
+            </div>
+          </div>
+          {% endif %}
+
+          
+          <div class="ed-info-card fade-up" style="border-color:rgba(56,189,248,0.15);">
+            <div class="ed-info-card-title">
+              <i class="fas fa-brain" style="color:var(--sky);"></i>
+              <span style="color:var(--sky);">AI Worker Matching</span>
+            </div>
+            <p style="font-size:0.8rem;color:var(--text-2);line-height:1.65;margin-bottom:12px;">
+              TradeLink's AI automatically ranks workers against your job descriptions
+              using semantic text and portfolio image analysis. Click
+              <strong style="color:var(--amber);">Matches</strong> on any active job
+              to see your top-ranked candidates.
+            </p>
+            {% for job in jobs %}
+              {% if job.status == 'active' %}
+              <a href="{% url 'marketplace:job_matches' pk=job.pk %}"
+                 style="display:inline-flex;align-items:center;gap:6px;font-size:0.8rem;
+                        font-weight:600;color:var(--sky);text-decoration:none;transition:var(--t);"
+                 onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
+                <i class="fas fa-bolt"></i> View matches for "{{ job.title|truncatechars:28 }}"
+              </a>
+              {% endif %}
+              {% if not forloop.first %}{% endif %}
+              {% if forloop.counter == 1 %}{% endif %}
+              {% comment %}Show link only for first active job{% endcomment %}
+              {% if forloop.counter >= 1 %}{% endif %}
+            {% endfor %}
+          </div>
+
+        </div>{# /sidebar #}
+
+      </div>{# /layout #}
+    </div>
+  </section>
+
+</div>{# /ed-page #}
+{% endblock %}
+
+
+{% block extra_scripts %}
+<script>
+/* ── Scroll-triggered fade-up ── */
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.style.animationPlayState = 'running';
+      obs.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.06 });
+document.querySelectorAll('.fade-up').forEach((el, i) => {
+  el.style.animationPlayState = 'paused';
+  el.style.animationDelay = el.style.animationDelay || (i * 0.06) + 's';
+  obs.observe(el);
+});
+
+/* ── AJAX job status toggle ── */
+function toggleJobStatus(btn) {
+  const url  = btn.dataset.toggleUrl;
+  const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
+  const card = btn.closest('.ed-job-card');
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size:0.6rem;"></i>';
+
+  fetch(url, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': csrf, 'Accept': 'application/json' },
+    credentials: 'same-origin',
+  })
+  .then(r => r.json())
+  .then(data => {
+    const newStatus = data.status;  // 'active' or 'paused'
+    const isActive  = newStatus === 'active';
+
+    /* Update card stripe */
+    card.dataset.status = newStatus;
+
+    /* Update button */
+    btn.className = `ed-toggle-btn ${newStatus}`;
+    btn.title     = isActive ? 'Pause this job' : 'Reactivate this job';
+    btn.innerHTML = isActive
+      ? '<i class="fas fa-pause" style="font-size:0.6rem;"></i> Pause'
+      : '<i class="fas fa-play"  style="font-size:0.6rem;"></i> Activate';
+
+    /* Update status tag chip inside the card */
+    const tagEl = card.querySelector('.ed-job-tag.green, .ed-job-tag.amber');
+    if (tagEl) {
+      if (isActive) {
+        tagEl.className = 'ed-job-tag green';
+        tagEl.innerHTML = '<i class="fas fa-circle" style="font-size:0.45rem;"></i> Active';
+      } else {
+        tagEl.className = 'ed-job-tag amber';
+        tagEl.innerHTML = '<i class="fas fa-pause" style="font-size:0.55rem;"></i> Paused';
+      }
+    }
+
+    btn.disabled = false;
+  })
+  .catch(() => {
+    btn.disabled  = false;
+    btn.innerHTML = 'Error — retry';
+    alert('Could not update job status. Please try again.');
+  });
+}
+
+/* ── Auto-dismiss messages ── */
+document.querySelectorAll('.ed-msg').forEach(el => {
+  setTimeout(() => {
+    el.style.transition = 'opacity 0.4s';
+    el.style.opacity    = '0';
+    setTimeout(() => el.remove(), 420);
+  }, 5000);
+});
+
+/* ── Fix duplicate stat number rendering (template limitation) ──
+   The stats band has some Django template loop complexity.
+   This JS patch computes real counts from the rendered job cards.
+── */
+document.addEventListener('DOMContentLoaded', () => {
+  const cards     = document.querySelectorAll('.ed-job-card');
+  const statNums  = document.querySelectorAll('.ed-stat .ed-stat-number');
+
+  if (statNums.length >= 4) {
+    /* Total jobs */
+    statNums[0].textContent = cards.length;
+
+    /* Active jobs */
+    const activeCount = [...cards].filter(c => c.dataset.status === 'active').length;
+    statNums[1].textContent = activeCount;
+
+    /* Pending apps — already rendered correctly from context */
+    /* Total applications — sum app_count from cards */
+    let totalApps = 0;
+    document.querySelectorAll('.ed-job-app-num').forEach(el => {
+      totalApps += parseInt(el.textContent) || 0;
+    });
+    statNums[3].textContent = totalApps;
+  }
+});
+</script>
+{% endblock %}
