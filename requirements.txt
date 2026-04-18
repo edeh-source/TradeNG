@@ -94,6 +94,8 @@ Twisted==25.5.0
 
 # ── UTILITIES ─────────────────────────────────────────────────────────────────
 pytz==2025.2
+django-phonenumber-field==8.0.0
+phonenumbers==8.13.55
 tzdata==2025.2
 six==1.17.0
 packaging==25.0
