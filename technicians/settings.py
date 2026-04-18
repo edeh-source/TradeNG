@@ -27,10 +27,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('SECRET_KEY')
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-q(1r^nu@wn4d@*b6qh=4jhtu5t6=86epv-!_(&3&nfo4u+n44j')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
+DEBUG = True
 
 ALLOWED_HOSTS = ["*"]
 
@@ -122,11 +122,11 @@ if DEBUG:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql_psycopg2',
-            'NAME': os.environ.get('DB_NAME'),
-            'USER': os.environ.get('DB_USER'),
-            'PASSWORD': os.environ.get('DB_PASSWORD',),
-            'HOST': os.environ.get('DB_HOST',),
-            'PORT': os.environ.get('DB_PORT'),
+            'NAME': os.environ.get('DB_NAME', 'jobs'),
+            'USER': os.environ.get('DB_USER', 'postgres'),
+            'PASSWORD': os.environ.get('DB_PASSWORD', ''),
+            'HOST': os.environ.get('DB_HOST', '127.0.0.1'),
+            'PORT': os.environ.get('DB_PORT', '5432'),
             'CONN_MAX_AGE': 0,
             'OPTIONS': {
                 'connect_timeout': 30,
@@ -320,45 +320,11 @@ SESSION_SAVE_EVERY_REQUEST = False
 
 
 
-if DEBUG:
-    CSRF_TRUSTED_ORIGINS = [
-        'http://127.0.0.1:8000',
-        'http://localhost:8000',
-    ]
-    CSRF_COOKIE_SECURE = False
-else:
-    CSRF_TRUSTED_ORIGINS = os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',')
-    if not CSRF_TRUSTED_ORIGINS or CSRF_TRUSTED_ORIGINS == ['']:
-        CSRF_TRUSTED_ORIGINS = [
-            'https://nestovaproperty.com',
-            'https://www.nestovaproperty.com',
-            'https://nestova-v6ks.onrender.com'
+
             
-        ]
-    CSRF_COOKIE_SECURE = True
 
-CSRF_COOKIE_HTTPONLY = False
-CSRF_COOKIE_SAMESITE = 'Lax'
 
-# ==================================
-# SECURITY SETTINGS - PRODUCTION
-# ==================================
 
-if not DEBUG:
-    SECURE_SSL_REDIRECT = True
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    SECURE_HSTS_SECONDS = 31536000
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD = True
-    SECURE_BROWSER_XSS_FILTER = True
-    SECURE_CONTENT_TYPE_NOSNIFF = True
-    X_FRAME_OPTIONS = 'DENY'
-
-# ==================================
-# EMAIL CONFIGURATION
-# ==================================
-
-# settings.py - Email Configuration (FIXED)
 
 if DEBUG:
     EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
@@ -371,6 +337,3 @@ if DEBUG:
     DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
     
     
-else:
-    RESEND_API_KEY = os.environ.get('RESEND_API_KEY')
-    DEFAULT_FROM_EMAIL = 'noreply@globaledgeconsultz.com'
