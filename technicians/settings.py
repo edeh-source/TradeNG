@@ -372,6 +372,5 @@ if DEBUG:
     
     
 else:
-    EMAIL_BACKEND = 'users.email_backend.ResendBackend'
     RESEND_API_KEY = os.environ.get('RESEND_API_KEY')
     DEFAULT_FROM_EMAIL = 'noreply@globaledgeconsultz.com'
