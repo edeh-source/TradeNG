@@ -257,6 +257,7 @@ else:
                     'CONNECTION_POOL_KWARGS': {
                         'max_connections': 50,
                         'retry_on_timeout': True,
+                        'ssl_cert_reqs': 'required',
                     },
                     'SOCKET_CONNECT_TIMEOUT': 5,
                     'SOCKET_TIMEOUT': 5,
@@ -306,6 +307,9 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE          = 'Africa/Lagos'
 CELERY_TASK_TRACK_STARTED = True
 
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    'visibility_timeout': 3600,
+}
 CELERY_REDIS_BACKEND_USE_SSL = {
     'ssl_cert_reqs': 'required',
 }
