@@ -257,7 +257,7 @@ else:
                     'CONNECTION_POOL_KWARGS': {
                         'max_connections': 50,
                         'retry_on_timeout': True,
-                        'ssl_cert_reqs': 'required',
+                        'ssl_cert_reqs': None,
                     },
                     'SOCKET_CONNECT_TIMEOUT': 5,
                     'SOCKET_TIMEOUT': 5,
@@ -311,10 +311,10 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
     'visibility_timeout': 3600,
 }
 CELERY_REDIS_BACKEND_USE_SSL = {
-    'ssl_cert_reqs': 'required',
+    'ssl_cert_reqs': None,
 }
 CELERY_BROKER_USE_SSL = {
-    'ssl_cert_reqs': 'required',
+    'ssl_cert_reqs': None,
 }
 # ==================================
 # EMAIL
