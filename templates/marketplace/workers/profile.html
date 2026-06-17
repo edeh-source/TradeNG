@@ -245,6 +245,55 @@
 }
 .wp-portfolio-empty i { font-size: 2rem; color: var(--border-strong); display: block; margin-bottom: 12px; }
 
+/* Video badge on thumbnail */
+.wp-video-thumb-badge {
+  position: absolute; top: 8px; right: 8px; z-index: 2;
+  background: rgba(12,10,8,0.85); backdrop-filter: blur(6px);
+  border: 1px solid var(--border-subtle); border-radius: var(--r-sm);
+  padding: 3px 8px; display: flex; align-items: center; gap: 5px;
+  font-size: 0.68rem; font-weight: 700; color: #FF4444;
+  pointer-events: none;
+}
+
+/* ── PORTFOLIO VIDEO EMBEDS ── */
+.wp-videos-section {
+  margin-top: 32px; padding-top: 28px;
+  border-top: 1px solid var(--border-subtle);
+}
+.wp-videos-title {
+  display: flex; align-items: center; gap: 10px;
+  font-family: 'Fraunces', serif; font-size: 1rem; font-weight: 800;
+  color: var(--text-1); margin-bottom: 20px;
+}
+.wp-videos-title i { color: #FF0000; font-size: 0.9rem; }
+.wp-video-entry { margin-bottom: 28px; }
+.wp-video-entry:last-child { margin-bottom: 0; }
+.wp-video-label {
+  font-size: 0.82rem; font-weight: 600; color: var(--text-2);
+  margin-bottom: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.wp-video-label i { color: #FF0000; font-size: 0.78rem; flex-shrink: 0; }
+.wp-video-trade-tag {
+  font-size: 0.72rem; color: var(--amber); font-weight: 600;
+  padding: 1px 8px; border-radius: var(--r-pill);
+  background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2);
+}
+.wp-video-yt-link {
+  margin-left: auto; font-size: 0.72rem; color: var(--text-3);
+  text-decoration: none; display: flex; align-items: center; gap: 4px;
+  transition: var(--t);
+}
+.wp-video-yt-link:hover { color: var(--amber); }
+.wp-video-frame {
+  position: relative; padding-bottom: 56.25%; height: 0;
+  border-radius: var(--r-lg); overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+.wp-video-frame iframe {
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 100%; border: none;
+}
+
 /* ── LIGHTBOX ── */
 .wp-lightbox {
   position: fixed; inset: 0; z-index: 5000;
@@ -640,7 +689,7 @@
           {% endif %}
         </div>
 
-        {# Portfolio #}
+        
         <div class="wp-section fade-up d2">
           <div class="wp-section-head">
             <i class="fas fa-images"></i> Portfolio
@@ -650,14 +699,25 @@
             {% endif %}
             {% endwith %}
           </div>
+
+          {# ── Photo grid (clickable → lightbox) ── #}
           <div class="wp-portfolio-grid">
             {% for item in worker.portfolio.all %}
             <div class="wp-portfolio-item"
                  onclick="openLightbox('{{ item.image.url }}', '{{ item.caption|escapejs }}')">
+
               <img src="{{ item.image.url }}"
                    alt="{{ item.caption|default:'Portfolio item' }}"
                    class="wp-portfolio-img"
                    loading="lazy">
+
+              {# YouTube badge on thumbnails that have a video #}
+              {% if item.has_video %}
+              <div class="wp-video-thumb-badge">
+                <i class="fab fa-youtube"></i> Video
+              </div>
+              {% endif %}
+
               <div class="wp-portfolio-overlay">
                 {% if item.caption %}
                 <div class="wp-portfolio-caption">{{ item.caption|truncatechars:60 }}</div>
@@ -674,7 +734,47 @@
             </div>
             {% endfor %}
           </div>
-        </div>
+
+          {# ── YouTube video embeds — one player per item that has a video ── #}
+          {% for item in worker.portfolio.all %}
+            {% if item.has_video %}
+              {% if forloop.first %}
+              <div class="wp-videos-section">
+                <div class="wp-videos-title">
+                  <i class="fab fa-youtube"></i> Work Demo Videos
+                </div>
+              {% endif %}
+
+                <div class="wp-video-entry">
+                  <div class="wp-video-label">
+                    <i class="fab fa-youtube"></i>
+                    {{ item.caption|default:"Work Demo" }}
+                    {% if item.trade_context %}
+                    <span class="wp-video-trade-tag">{{ item.trade_context.name }}</span>
+                    {% endif %}
+                    <a href="{{ item.youtube_url }}"
+                       target="_blank" rel="noopener noreferrer"
+                       class="wp-video-yt-link">
+                      <i class="fas fa-external-link-alt" style="font-size:0.65rem;"></i>
+                      Open on YouTube
+                    </a>
+                  </div>
+                  <div class="wp-video-frame">
+                    <iframe
+                      src="{{ item.get_embed_url }}"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowfullscreen
+                      loading="lazy"
+                      title="{{ item.caption|default:'Work demo video' }}">
+                    </iframe>
+                  </div>
+                </div>
+
+              {% if forloop.last %}</div>{% endif %}{# close .wp-videos-section #}
+            {% endif %}
+          {% endfor %}
+
+        </div>{# /portfolio section #}
 
         {# Reviews #}
         <div class="wp-section fade-up d3">
@@ -886,12 +986,12 @@
         {# AI matching status #}
         {% if worker.text_embedding %}
         <div style="background:var(--bg-card);border:1px solid rgba(56,189,248,0.15);
-                    border-radius:var(--r-xl);padding:18px;fade-up d2;">
+                    border-radius:var(--r-xl);padding:18px;" class="fade-up d2">
           <div style="display:flex;align-items:center;gap:10px;font-size:0.82rem;
                       color:var(--sky);font-weight:600;margin-bottom:6px;">
             <i class="fas fa-brain"></i> AI-Indexed Profile
           </div>
-          <p style="font-size:0.78rem;color:var(--text-3);line-height:1.6;">
+          <p style="font-size:0.78rem;color:var(--text-3);line-height:1.6;margin:0;">
             This worker's profile is indexed for AI job matching.
             Employers posting relevant jobs will see this worker recommended automatically.
           </p>

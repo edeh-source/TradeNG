@@ -460,7 +460,31 @@
                 {% endif %}
               </div>
 
-              
+              {# YouTube Demo URL — full width #}
+              <div class="we-field we-field-full {% if form.youtube_url.errors %}has-error{% endif %}">
+                <label class="we-label" for="{{ form.youtube_url.id_for_label }}">
+                  <i class="fab fa-youtube" style="color:#ef4444;font-size:0.85rem;"></i>
+                  YouTube Demo Video
+                  <span style="font-size:0.72rem;color:var(--text-3);font-weight:400;margin-left:2px;">(optional)</span>
+                </label>
+                <input
+                  type="url"
+                  name="{{ form.youtube_url.html_name }}"
+                  id="{{ form.youtube_url.id_for_label }}"
+                  value="{{ form.youtube_url.value|default:'' }}"
+                  class="we-input"
+                  placeholder="https://www.youtube.com/watch?v=… or https://youtu.be/…"
+                >
+                <span class="we-help">
+                  Paste a YouTube link of you performing this work. It will be embedded on your public profile and dashboard.
+                </span>
+                {% if form.youtube_url.errors %}
+                  <span class="we-field-error">
+                    <i class="fas fa-circle-exclamation"></i> {{ form.youtube_url.errors.0 }}
+                  </span>
+                {% endif %}
+              </div>
+
               <div class="we-field {% if form.trade_context.errors %}has-error{% endif %}">
                 <label class="we-label" for="{{ form.trade_context.id_for_label }}">
                   Trade Category

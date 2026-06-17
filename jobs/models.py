@@ -45,9 +45,11 @@ Embedding storage
 """
 
 import uuid
+import re
 from django.db import models
 from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.core.exceptions import ValidationError
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -93,6 +95,41 @@ NIGERIAN_STATES = [
     ('yobe',          'Yobe'),
     ('zamfara',       'Zamfara'),
 ]
+
+
+def validate_youtube_url(value):
+    if not value:
+        return
+    pattern = re.compile(
+        r'^https?://(www\.)?(youtube\.com/watch\?.*v=[\w\-]{11}|youtu\.be/[\w\-]{11}|youtube\.com/shorts/[\w\-]{11})',
+        re.IGNORECASE,
+    )
+    if not pattern.match(value):
+        raise ValidationError(
+            'Enter a valid YouTube URL (e.g. https://www.youtube.com/watch?v=… '
+            'or https://youtu.be/… or https://www.youtube.com/shorts/…).'
+        )
+
+def get_youtube_embed_url(youtube_url: str) -> str | None:
+    if not youtube_url:
+        return None
+
+    # youtu.be/<id>
+    short = re.match(r'https?://youtu\.be/([\w\-]{11})', youtube_url, re.IGNORECASE)
+    if short:
+        return f'https://www.youtube.com/embed/{short.group(1)}'
+
+    # youtube.com/shorts/<id>
+    shorts = re.match(r'https?://(www\.)?youtube\.com/shorts/([\w\-]{11})', youtube_url, re.IGNORECASE)
+    if shorts:
+        return f'https://www.youtube.com/embed/{shorts.group(2)}'
+
+    # youtube.com/watch?v=<id>
+    watch = re.search(r'[?&]v=([\w\-]{11})', youtube_url)
+    if watch:
+        return f'https://www.youtube.com/embed/{watch.group(1)}'
+
+    return None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -354,12 +391,20 @@ class WorkerSkill(models.Model):
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  5.  PORTFOLIO ITEM
-#      Images of a worker's past work — the visual side of CLIP matching.
+#      Images + optional YouTube demo video of a worker's past work.
 # ──────────────────────────────────────────────────────────────────────────────
 
 class PortfolioItem(models.Model):
     """
-    A single past-work photo with a descriptive caption.
+    A single past-work entry with a photo and/or a YouTube demo video.
+
+    YouTube field
+    ─────────────
+    Workers can paste a YouTube URL of themselves performing the work
+    (e.g. a time-lapse of a wiring job, a finished paint job walkthrough).
+    The URL is validated to be a genuine YouTube watch/short link, and the
+    helper method `get_embed_url()` converts it to an embeddable iframe src
+    so templates can render it directly.
 
     CLIP use: the *image* is encoded by CLIP's visual encoder and the resulting
     embedding is stored in clip_image_embedding.  This lets employers who
@@ -373,11 +418,26 @@ class PortfolioItem(models.Model):
         on_delete=models.CASCADE,
         related_name='portfolio',
     )
+
+    # ── Photo (still required for CLIP image embedding) ──────────────────────
     image         = models.ImageField(upload_to='portfolio/%Y/%m/')
     caption       = models.CharField(max_length=280, blank=True)
     trade_context = models.ForeignKey(
         TradeCategory, null=True, blank=True, on_delete=models.SET_NULL,
         help_text='Which trade this item demonstrates.',
+    )
+
+    # ── YouTube demo video ───────────────────────────────────────────────────
+    youtube_url   = models.URLField(
+        max_length=200,
+        blank=True,
+        validators=[validate_youtube_url],
+        verbose_name='YouTube Demo URL',
+        help_text=(
+            'Optional: paste a YouTube link of you doing this work '
+            '(e.g. https://www.youtube.com/watch?v=… or https://youtu.be/…). '
+            'The video will be embedded on your public profile.'
+        ),
     )
 
     # CLIP image embedding — 512-dim float list from CLIP ViT-B/32
@@ -395,6 +455,24 @@ class PortfolioItem(models.Model):
     def __str__(self):
         return f'{self.worker.user.username} portfolio — {self.caption[:40]}'
 
+    # ── Helpers ──────────────────────────────────────────────────────────────
+
+    def get_embed_url(self) -> str | None:
+        """
+        Returns an embeddable YouTube URL, or None if no YouTube URL is set.
+
+        Usage in templates:
+            {% if item.get_embed_url %}
+              <iframe src="{{ item.get_embed_url }}" ...></iframe>
+            {% endif %}
+        """
+        return get_youtube_embed_url(self.youtube_url)
+
+    @property
+    def has_video(self) -> bool:
+        """True when a valid YouTube URL has been provided."""
+        return bool(self.youtube_url)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  6.  EMPLOYER PROFILE
@@ -405,9 +483,9 @@ class EmployerProfile(models.Model):
     class CompanyType(models.TextChoices):
         INDIVIDUAL  = 'individual',  'Individual / Homeowner'
         SME         = 'sme',         'Small / Medium Business'
-        CORPORATION = 'corporation', 'Large Corporation'
-        NGO         = 'ngo',         'NGO / Non-Profit'
-        GOVERNMENT  = 'government',  'Government Agency'
+        CORPORATE   = 'corporate',   'Corporate / Large Business'
+        NGO         = 'ngo',         'NGO / Non-profit'
+        GOVERNMENT  = 'government',  'Government / Public Sector'
 
     id           = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user         = models.OneToOneField(
@@ -415,16 +493,13 @@ class EmployerProfile(models.Model):
         on_delete=models.CASCADE,
         related_name='employer_profile',
     )
-    company_name = models.CharField(max_length=256, blank=True)
+    company_name = models.CharField(max_length=200, blank=True)
     company_type = models.CharField(
-        max_length=20,
-        choices=CompanyType.choices,
-        default=CompanyType.SME,
+        max_length=20, choices=CompanyType.choices, default=CompanyType.INDIVIDUAL,
     )
-    industry     = models.CharField(max_length=120, blank=True)
-    about        = models.TextField(blank=True)
-    logo         = models.ImageField(upload_to='employer_logos/', blank=True, null=True)
+    description  = models.TextField(blank=True)
     website      = models.URLField(blank=True)
+    phone        = models.CharField(max_length=20, blank=True)
 
     state        = models.CharField(max_length=40, choices=NIGERIAN_STATES, blank=True)
     lga          = models.CharField(max_length=120, blank=True)
@@ -809,6 +884,11 @@ class Notification(models.Model):
         JOB_EXPIRING       = 'job_expiring',        'Job Expiring Soon'
         PROFILE_TIP        = 'profile_tip',         'Profile Improvement Tip'
         SYSTEM             = 'system',              'System Message'
+        ESCROW_FUNDED      = 'escrow_funded',       'Escrow Funded'
+        ESCROW_SUBMITTED   = 'escrow_submitted',    'Work Submitted for Review'
+        ESCROW_APPROVED    = 'escrow_approved',      'Milestone Approved'
+        ESCROW_RELEASED    = 'escrow_released',      'Payment Released'
+        ESCROW_DISPUTE     = 'escrow_dispute',       'Dispute Raised'
 
     id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user       = models.ForeignKey(
@@ -832,3 +912,222 @@ class Notification(models.Model):
 
     def __str__(self):
         return f'[{self.notif_type}] → {self.user.username}: {self.title}'
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  13.  CONTRACT
+#       Links an accepted JobApplication to an escrow-backed engagement.
+# ──────────────────────────────────────────────────────────────────────────────
+
+class Contract(models.Model):
+    """
+    Represents a formal engagement between an employer and a worker,
+    created after a JobApplication is accepted.  Milestones (and their
+    escrowed funds) live under a Contract.
+    """
+
+    class Status(models.TextChoices):
+        PENDING    = 'pending',    'Pending'
+        ACTIVE     = 'active',     'Active'
+        COMPLETED  = 'completed',  'Completed'
+        DISPUTED   = 'disputed',   'Disputed'
+        CANCELLED  = 'cancelled',  'Cancelled'
+
+    id               = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    job              = models.ForeignKey(
+        Job, on_delete=models.PROTECT, related_name='contracts',
+    )
+    application      = models.OneToOneField(
+        JobApplication, on_delete=models.PROTECT, related_name='contract',
+    )
+    employer         = models.ForeignKey(
+        EmployerProfile, on_delete=models.PROTECT, related_name='contracts',
+    )
+    worker           = models.ForeignKey(
+        WorkerProfile, on_delete=models.PROTECT, related_name='contracts',
+    )
+    title            = models.CharField(
+        max_length=256,
+        help_text='Auto-populated from the job title on save.',
+    )
+    status           = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.PENDING,
+    )
+    platform_fee_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=10.00,
+        help_text='Percentage deducted from worker payout (e.g. 10.00 = 10%).',
+    )
+    created_at       = models.DateTimeField(auto_now_add=True)
+    updated_at       = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Contract: {self.title} — {self.employer} ↔ {self.worker}'
+
+    def save(self, *args, **kwargs):
+        if not self.title and self.job_id:
+            self.title = self.job.title
+        super().save(*args, **kwargs)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  14.  MILESTONE
+#       Individual payment milestones within a Contract.
+# ──────────────────────────────────────────────────────────────────────────────
+
+class Milestone(models.Model):
+    """
+    A single deliverable within a Contract.  Each milestone has its own
+    escrowed funds, lifecycle (fund → submit → approve → release), and
+    Paystack payment/transfer references.
+    """
+
+    class Status(models.TextChoices):
+        UNFUNDED   = 'unfunded',   'Unfunded'
+        FUNDED     = 'funded',     'Funded (In Escrow)'
+        IN_REVIEW  = 'in_review',  'In Review'
+        APPROVED   = 'approved',   'Approved'
+        RELEASED   = 'released',   'Released'
+        DISPUTED   = 'disputed',   'Disputed'
+        REFUNDED   = 'refunded',   'Refunded'
+
+    id                   = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    contract             = models.ForeignKey(
+        Contract, on_delete=models.PROTECT, related_name='milestones',
+    )
+    title                = models.CharField(max_length=200)
+    description          = models.TextField()
+    amount               = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        help_text='Gross amount the employer pays into escrow (NGN).',
+    )
+    status               = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.UNFUNDED,
+    )
+    due_date             = models.DateField(null=True, blank=True)
+    funded_at            = models.DateTimeField(null=True, blank=True)
+    submitted_at         = models.DateTimeField(null=True, blank=True)
+    approved_at          = models.DateTimeField(null=True, blank=True)
+    auto_release_at      = models.DateTimeField(
+        null=True, blank=True,
+        help_text='Set to funded_at + 7 days when worker submits work.',
+    )
+    submission_note      = models.TextField(
+        blank=True,
+        help_text="Worker's delivery note when submitting work.",
+    )
+    paystack_payment_ref = models.CharField(
+        max_length=100, unique=True, null=True, blank=True,
+        help_text='Paystack transaction reference for the escrow charge.',
+    )
+    paystack_transfer_ref = models.CharField(
+        max_length=100, null=True, blank=True,
+        help_text='Paystack transfer reference for the worker payout.',
+    )
+    worker_amount        = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text='Amount after platform fee deduction, computed on release.',
+    )
+    display_order        = models.PositiveIntegerField(default=0)
+    created_at           = models.DateTimeField(auto_now_add=True)
+    updated_at           = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['contract', 'display_order', 'created_at']
+
+    def __str__(self):
+        return f'{self.title} — ₦{self.amount} [{self.status}]'
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  15.  WORKER BANK ACCOUNT
+#       Bank details for Paystack payouts to workers.
+# ──────────────────────────────────────────────────────────────────────────────
+
+class WorkerBankAccount(models.Model):
+    """
+    Stores a worker's Nigerian bank account details for receiving payouts
+    via Paystack Transfers.  Card details are never stored — only the
+    bank account (NUBAN) information needed for direct transfers.
+    """
+
+    id                     = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    worker                 = models.OneToOneField(
+        WorkerProfile, on_delete=models.PROTECT, related_name='bank_account',
+    )
+    account_name           = models.CharField(max_length=200)
+    account_number         = models.CharField(
+        max_length=10,
+        help_text='10-digit NUBAN account number.',
+    )
+    bank_code              = models.CharField(
+        max_length=10,
+        help_text='Paystack bank code (e.g. "044" for Access Bank).',
+    )
+    bank_name              = models.CharField(max_length=100)
+    paystack_recipient_code = models.CharField(
+        max_length=100, blank=True,
+        help_text='Created via Paystack Transfer Recipient API.',
+    )
+    is_verified            = models.BooleanField(default=False)
+    created_at             = models.DateTimeField(auto_now_add=True)
+    updated_at             = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name        = 'Worker Bank Account'
+        verbose_name_plural = 'Worker Bank Accounts'
+
+    def __str__(self):
+        masked = f'****{self.account_number[-4:]}' if len(self.account_number) >= 4 else '****'
+        return f'{self.worker.user.username} — {self.bank_name} {masked}'
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  16.  DISPUTE
+#       Raised when either party disagrees on milestone delivery.
+# ──────────────────────────────────────────────────────────────────────────────
+
+class Dispute(models.Model):
+    """
+    Records a dispute raised against a milestone.  Admin reviews the
+    evidence and resolves by either releasing funds to the worker or
+    refunding the employer.
+    """
+
+    class Resolution(models.TextChoices):
+        PENDING              = 'pending',              'Pending'
+        RELEASED_TO_WORKER   = 'released_to_worker',   'Released to Worker'
+        REFUNDED_TO_EMPLOYER = 'refunded_to_employer',  'Refunded to Employer'
+        SPLIT                = 'split',                 'Split'
+
+    id               = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    milestone        = models.OneToOneField(
+        Milestone, on_delete=models.PROTECT, related_name='dispute',
+    )
+    raised_by        = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name='raised_disputes',
+    )
+    reason           = models.TextField()
+    evidence         = models.FileField(
+        upload_to='disputes/evidence/', null=True, blank=True,
+    )
+    resolution       = models.CharField(
+        max_length=30, choices=Resolution.choices, default=Resolution.PENDING,
+    )
+    resolution_note  = models.TextField(blank=True)
+    resolved_at      = models.DateTimeField(null=True, blank=True)
+    resolved_by      = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='resolved_disputes',
+    )
+    created_at       = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Dispute: {self.milestone.title} — {self.resolution}'

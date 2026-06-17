@@ -1,0 +1,1177 @@
+{% extends "base.html" %}
+{% block title %}TradeLink NG — Find Skilled Trade Work in Nigeria{% endblock %}
+{% block nav_home %}active{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* =====================================================
+     INDEX PAGE — TradeLink NG Homepage
+  ===================================================== */
+
+  /* ===== HERO ===== */
+  .hero {
+    padding-top:    calc(var(--nav-h) + clamp(36px, 6vw, 72px));
+    padding-bottom: clamp(56px, 8vw, 96px);
+    position: relative; z-index: 1;
+    text-align: center;
+  }
+
+  .hero-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 18px 6px 8px;
+    background: rgba(245,158,11,0.08);
+    border: 1px solid rgba(245,158,11,0.22);
+    border-radius: var(--r-pill);
+    font-size: 0.82rem; font-weight: 600;
+    color: var(--amber); margin-bottom: 32px;
+    max-width: 100%; white-space: normal; text-align: center;
+  }
+  .hero-badge-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--amber); flex-shrink: 0;
+    animation: pulseDot 2s ease-in-out infinite;
+  }
+
+  .hero h1 {
+    font-family: 'Fraunces', serif;
+    font-size: clamp(2.4rem, 8vw, 6rem);
+    font-weight: 900; line-height: 1.05;
+    letter-spacing: clamp(-1px, -0.5vw, -3px);
+    margin-bottom: 12px;
+    word-break: break-word; overflow-wrap: break-word;
+  }
+  .hero h1 em {
+    font-style: italic; color: var(--amber);
+    -webkit-text-fill-color: unset;
+    background: none;
+  }
+
+  .hero-sub {
+    font-size: clamp(0.93rem, 2vw, 1.2rem);
+    color: var(--text-2); max-width: 560px;
+    margin: 0 auto 48px; line-height: 1.75;
+    padding: 0 clamp(0px, 2vw, 16px);
+  }
+
+  /* ── Hero search + autocomplete wrapper ── */
+  .hero-search-wrap {
+    max-width: 720px; margin: 0 auto 20px;
+    position: relative;
+  }
+  .hero-search {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 20px;
+    padding: 8px 8px 8px 12px;
+    display: flex; align-items: center; gap: 8px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.4), 0 0 0 1px rgba(245,158,11,0.06);
+    transition: var(--t);
+    width: 100%;
+  }
+  .hero-search:focus-within {
+    border-color: var(--border-strong);
+    box-shadow: 0 8px 40px rgba(0,0,0,0.5), 0 0 0 3px rgba(245,158,11,0.1);
+  }
+  .search-field {
+    flex: 1; display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px;
+    border-right: 1px solid var(--border-subtle);
+    min-width: 0;
+  }
+  .search-field i { color: var(--text-3); font-size: 0.95rem; flex-shrink: 0; }
+  .search-field input {
+    flex: 1; background: none; border: none; outline: none;
+    font-family: 'Outfit', sans-serif; font-size: 0.95rem;
+    color: var(--text-1);
+    min-width: 0; width: 100%;
+  }
+  .search-field input::placeholder { color: var(--text-3); }
+
+  /* Clear button */
+  .search-clear-hero {
+    background: none; border: none; cursor: pointer; padding: 0 4px;
+    color: var(--text-3); font-size: 0.8rem; flex-shrink: 0;
+    display: none; transition: var(--t); line-height: 1;
+  }
+  .search-clear-hero:hover { color: var(--text-1); }
+  .search-clear-hero.visible { display: block; }
+
+  .search-loc {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    min-width: 0; flex-shrink: 1;
+  }
+  .search-loc i { color: var(--text-3); font-size: 0.9rem; flex-shrink: 0; }
+  .search-loc select {
+    background: none; border: none; outline: none; cursor: pointer;
+    font-family: 'Outfit', sans-serif; font-size: 0.92rem;
+    color: var(--text-2); flex: 1;
+    min-width: 0; max-width: 100%;
+  }
+  .search-loc select option { background: var(--bg-card); color: var(--text-1); }
+  .hero-search .btn-primary { padding: 13px 28px; border-radius: 13px; white-space: nowrap; flex-shrink: 0; }
+
+  /* ── Autocomplete dropdown ── */
+  .ac-dropdown {
+    position: absolute; top: calc(100% + 8px); left: 0; right: 0;
+    background: var(--bg-card); border: 1px solid var(--border-strong);
+    border-radius: var(--r-lg);
+    box-shadow: 0 20px 48px rgba(0,0,0,0.55), 0 0 0 1px rgba(245,158,11,0.06);
+    z-index: 500;
+    display: none;
+    max-height: 300px; overflow-y: auto;
+  }
+  .ac-dropdown.open { display: block; }
+  .ac-dropdown::-webkit-scrollbar { width: 4px; }
+  .ac-dropdown::-webkit-scrollbar-track { background: transparent; }
+  .ac-dropdown::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+
+  .ac-section-label {
+    font-size: 0.65rem; font-weight: 700; letter-spacing: 2px;
+    text-transform: uppercase; color: var(--text-3);
+    padding: 10px 14px 6px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .ac-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; cursor: pointer;
+    font-size: 0.88rem; color: var(--text-2);
+    transition: background 0.15s ease;
+  }
+  .ac-item:hover, .ac-item.highlighted {
+    background: var(--surface-1); color: var(--text-1);
+  }
+  .ac-item i {
+    width: 18px; text-align: center; font-size: 0.78rem;
+    color: var(--text-3); flex-shrink: 0;
+  }
+  .ac-item:hover i, .ac-item.highlighted i { color: var(--amber); }
+  .ac-item em { font-style: normal; color: var(--amber); font-weight: 600; }
+  .ac-item-sub { margin-left: auto; font-size: 0.72rem; color: var(--text-3); flex-shrink: 0; }
+  .ac-empty { padding: 20px 14px; font-size: 0.85rem; color: var(--text-3); text-align: center; }
+
+  .hero-tags {
+    display: flex; align-items: center; justify-content: center;
+    flex-wrap: wrap; gap: 8px;
+    max-width: 100%; padding: 0 clamp(0px, 2vw, 16px);
+    font-size: 0.82rem; color: var(--text-3);
+  }
+  .hero-tags span { color: var(--text-3); }
+  .hero-tag {
+    padding: 4px 14px;
+    background: var(--surface-1); border: 1px solid var(--border-subtle);
+    border-radius: var(--r-pill); color: var(--text-2); font-size: 0.82rem;
+    cursor: pointer; transition: var(--t); text-decoration: none;
+  }
+  .hero-tag:hover { background: var(--surface-2); border-color: var(--border-strong); color: var(--amber); }
+
+  /* Trust bar */
+  .trust-bar {
+    padding: 32px 0;
+    border-top: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border-subtle);
+    background: rgba(19,16,8,0.5);
+    position: relative; z-index: 1;
+    overflow: hidden;
+  }
+  .trust-bar-inner {
+    max-width: 1200px; margin: 0 auto;
+    padding: 0 clamp(16px,4vw,48px);
+    display: flex; align-items: center; justify-content: center;
+    flex-wrap: wrap; gap: 24px;
+  }
+  .trust-stat { text-align: center; min-width: 80px; }
+  .trust-num {
+    font-family: 'Fraunces', serif;
+    font-size: 1.8rem; font-weight: 800; line-height: 1;
+    background: linear-gradient(135deg, var(--amber), var(--orange));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 4px;
+  }
+  .trust-lbl { font-size: 0.82rem; color: var(--text-3); font-weight: 500; }
+  .trust-divider {
+    width: 1px; height: 40px; background: var(--border-subtle);
+    flex-shrink: 0;
+  }
+
+  /* ===== SECTIONS ===== */
+  .section { padding: clamp(56px,8vw,96px) 0; position: relative; z-index: 1; }
+  .section-header {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    flex-wrap: wrap; gap: 20px; margin-bottom: 48px;
+  }
+
+  /* ===== TRADE GRID ===== */
+  .trade-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  .trade-card {
+    padding: 28px 24px;
+    cursor: pointer; text-decoration: none;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .trade-icon {
+    width: 52px; height: 52px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.3rem; flex-shrink: 0;
+    transition: var(--t);
+  }
+  .trade-card:hover .trade-icon { transform: scale(1.1) rotate(-3deg); }
+  .trade-name {
+    font-family: 'Fraunces', serif;
+    font-size: 1.05rem; font-weight: 700; margin-bottom: 4px;
+    color: var(--text-1);
+  }
+  .trade-count { font-size: 0.83rem; color: var(--text-3); }
+  .trade-arrow {
+    margin-top: auto;
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--surface-1); border: 1px solid var(--border-subtle);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-3); font-size: 0.8rem;
+    transition: var(--t);
+  }
+  .trade-card:hover .trade-arrow {
+    background: var(--surface-2); color: var(--amber); border-color: var(--border-strong);
+    transform: translateX(4px);
+  }
+
+  /* ===== FEATURED JOBS ===== */
+  .jobs-section { background: var(--bg-raised); }
+  .job-list { display: flex; flex-direction: column; gap: 12px; }
+
+  .job-card {
+    padding: 24px 28px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 20px;
+    cursor: pointer;
+    overflow: hidden;
+  }
+  .job-logo {
+    width: 52px; height: 52px; border-radius: 14px;
+    background: var(--surface-1); border: 1px solid var(--border-subtle);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.3rem; flex-shrink: 0;
+  }
+  .job-info {
+    min-width: 0;
+    overflow: hidden;
+  }
+  .job-title {
+    font-family: 'Fraunces', serif;
+    font-size: 1.05rem; font-weight: 700;
+    color: var(--text-1); margin-bottom: 6px;
+    transition: var(--t);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .job-card:hover .job-title { color: var(--amber); }
+  .job-meta {
+    display: flex; flex-wrap: wrap; gap: 8px 12px;
+    font-size: 0.83rem; color: var(--text-3); align-items: center;
+    min-width: 0;
+  }
+  .job-meta-item {
+    display: flex; align-items: center; gap: 5px;
+    min-width: 0; white-space: nowrap;
+  }
+  .job-meta-item i { font-size: 0.78rem; color: var(--text-3); }
+  .job-right {
+    display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
+    flex-shrink: 0;
+  }
+  .job-pay {
+    font-family: 'Fraunces', serif; font-size: 1.05rem; font-weight: 700;
+    color: var(--amber); white-space: nowrap;
+  }
+  .job-pay small { font-family: 'Outfit', serif; font-size: 0.75rem; color: var(--text-3); font-weight: 400; }
+  .job-tags { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .btn-save {
+    background: none; border: 1px solid var(--border-subtle);
+    border-radius: var(--r-md); width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-3); cursor: pointer; transition: var(--t);
+    flex-shrink: 0;
+  }
+  .btn-save:hover, .btn-save.saved { border-color: var(--amber); color: var(--amber); background: var(--surface-1); }
+
+  /* ===== HOW IT WORKS ===== */
+  .steps-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    position: relative;
+  }
+  .steps-grid::before {
+    content: '';
+    position: absolute; top: 48px; left: calc(50% / 3 + 12px); right: calc(50% / 3 + 12px);
+    height: 1px; background: linear-gradient(90deg, transparent, var(--border-strong), transparent);
+  }
+  .step-card {
+    padding: 36px 28px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .step-num {
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-size: 3.5rem; font-weight: 900; line-height: 1;
+    color: var(--border-strong);
+  }
+  .step-icon {
+    width: 56px; height: 56px; border-radius: 16px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem;
+    background: linear-gradient(135deg, var(--surface-1), var(--surface-2));
+    border: 1px solid var(--border-subtle);
+    color: var(--amber); margin-bottom: 4px;
+  }
+  .step-card h3 { font-family: 'Fraunces', serif; font-size: 1.15rem; font-weight: 700; color: var(--text-1); }
+  .step-card p { font-size: 0.9rem; color: var(--text-2); line-height: 1.7; }
+
+  /* ===== AI SECTION ===== */
+  .ai-section {
+    padding: clamp(56px,8vw,96px) 0;
+    background: linear-gradient(135deg, rgba(245,158,11,0.04) 0%, rgba(249,115,22,0.02) 100%);
+    border-top: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border-subtle);
+    position: relative; z-index: 1; overflow: hidden;
+  }
+  .ai-section::before {
+    content: '';
+    position: absolute; width: 500px; height: 500px;
+    border-radius: 50%; filter: blur(80px); opacity: 0.08;
+    background: var(--amber);
+    top: 50%; right: -100px; transform: translateY(-50%);
+    pointer-events: none;
+  }
+  .ai-inner {
+    max-width: 1200px; margin: 0 auto; padding: 0 clamp(16px,4vw,48px);
+    display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center;
+  }
+  .ai-features { display: flex; flex-direction: column; gap: 24px; margin-top: 40px; }
+  .ai-feature {
+    display: flex; gap: 16px; align-items: flex-start; padding: 20px;
+    background: var(--bg-card); border: 1px solid var(--border-subtle);
+    border-radius: var(--r-lg); transition: var(--t);
+  }
+  .ai-feature:hover { border-color: var(--border-strong); }
+  .ai-feature-icon {
+    width: 42px; height: 42px; border-radius: 11px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.05rem;
+    background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(249,115,22,0.1));
+    border: 1px solid rgba(245,158,11,0.2); color: var(--amber);
+  }
+  .ai-feature h4 { font-family: 'Fraunces', serif; font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
+  .ai-feature p { font-size: 0.87rem; color: var(--text-2); line-height: 1.65; }
+  .ai-visual { position: relative; display: flex; flex-direction: column; gap: 14px; }
+  .match-card {
+    padding: 20px;
+    display: flex; align-items: center; gap: 16px;
+    transition: var(--t);
+  }
+  .match-card:hover { border-color: var(--border-strong); }
+  .match-avatar {
+    width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--amber-dark), var(--orange));
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Fraunces', serif; font-weight: 800; font-size: 1.1rem; color: #0C0A08;
+  }
+  .match-info { flex: 1; min-width: 0; }
+  .match-name { font-weight: 700; font-size: 0.95rem; margin-bottom: 3px; }
+  .match-trade {
+    font-size: 0.82rem; color: var(--text-2);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .match-score {
+    font-family: 'Fraunces', serif; font-weight: 800; font-size: 1.1rem;
+    color: var(--emerald); flex-shrink: 0;
+  }
+  .match-score small { font-family: 'Outfit', sans-serif; font-size: 0.72rem; color: var(--text-3); font-weight: 400; }
+  .ai-label {
+    position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+    background: linear-gradient(135deg, var(--amber), var(--orange));
+    color: #0C0A08; font-size: 0.72rem; font-weight: 800;
+    padding: 4px 14px; border-radius: var(--r-pill); letter-spacing: 1px;
+    text-transform: uppercase; white-space: nowrap;
+  }
+
+  /* ===== TESTIMONIALS ===== */
+  .testimonials-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .testi-card { padding: 32px; }
+  .testi-quote { font-size: 2rem; line-height: 1; color: var(--amber); margin-bottom: 16px; font-family: 'Fraunces', serif; }
+  .testi-text { font-size: 0.93rem; color: var(--text-2); line-height: 1.75; margin-bottom: 24px; font-style: italic; }
+  .testi-author { display: flex; align-items: center; gap: 12px; }
+  .testi-avatar {
+    width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--amber), var(--orange));
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Fraunces', serif; font-weight: 800; font-size: 0.9rem; color: #0C0A08;
+  }
+  .testi-name { font-weight: 700; font-size: 0.92rem; margin-bottom: 2px; }
+  .testi-role { font-size: 0.8rem; color: var(--text-3); }
+  .testi-stars { color: var(--amber); font-size: 0.75rem; margin-bottom: 14px; }
+
+  /* ===== CTA ===== */
+  .cta-section { padding: clamp(56px,8vw,96px) 0; position: relative; z-index: 1; overflow: hidden; }
+  .cta-card {
+    padding: clamp(40px,6vw,72px) clamp(20px,5vw,60px);
+    background: linear-gradient(135deg, rgba(245,158,11,0.08) 0%, rgba(249,115,22,0.05) 50%, rgba(16,185,129,0.04) 100%);
+    border: 1px solid var(--border-subtle);
+    border-radius: 32px; text-align: center;
+    position: relative; overflow: hidden;
+  }
+  .cta-card::before {
+    content: '';
+    position: absolute; inset: -1px;
+    border-radius: 33px;
+    background: linear-gradient(135deg, var(--amber), var(--orange), var(--emerald));
+    z-index: -1; opacity: 0.15;
+  }
+  .cta-card h2 {
+    font-family: 'Fraunces', serif;
+    font-size: clamp(1.8rem, 4vw, 3rem);
+    font-weight: 900; letter-spacing: -1px; line-height: 1.15;
+    margin-bottom: 16px; word-break: break-word;
+  }
+  .cta-card p { color: var(--text-2); font-size: 1.05rem; max-width: 500px; margin: 0 auto 40px; line-height: 1.75; }
+  .cta-actions { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+
+  /* ===== RESPONSIVE ===== */
+  @media (max-width: 1024px) {
+    .trade-grid { grid-template-columns: repeat(2, 1fr); }
+    .ai-inner { grid-template-columns: 1fr; gap: 48px; }
+  }
+  @media (max-width: 768px) {
+    .steps-grid { grid-template-columns: 1fr; }
+    .steps-grid::before { display: none; }
+    .testimonials-grid { grid-template-columns: 1fr; }
+    .job-card { grid-template-columns: auto 1fr; padding: 18px 20px; }
+    .job-right { display: none; }
+    .job-title { white-space: normal; }
+    .trust-divider { display: none; }
+    .trust-bar-inner { justify-content: center; gap: 20px 32px; }
+    .hero-search {
+      flex-direction: column; gap: 0; padding: 8px;
+      border-radius: 16px;
+    }
+    .search-field {
+      border-right: none;
+      border-bottom: 1px solid var(--border-subtle);
+      width: 100%; padding: 12px;
+    }
+    .search-loc {
+      border-bottom: none; width: 100%; padding: 12px; min-width: 0;
+    }
+    .search-loc select { width: 100%; }
+    .hero-search .btn-primary { width: 100%; border-radius: 10px; }
+    .section-header { flex-direction: column; align-items: flex-start; }
+    .cta-actions { flex-direction: column; align-items: stretch; }
+    .cta-actions .btn { justify-content: center; }
+    /* Autocomplete full width on stacked layout */
+    .ac-dropdown { border-radius: var(--r-md); }
+  }
+  @media (max-width: 560px) {
+    .trade-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .trade-card  { padding: 20px 16px; }
+    .trust-bar-inner { gap: 16px 24px; }
+    .trust-num { font-size: 1.4rem; }
+    .job-card { grid-template-columns: auto 1fr; gap: 12px; padding: 14px 16px; }
+    .job-logo { width: 42px; height: 42px; font-size: 1rem; }
+    .job-meta { gap: 6px 10px; }
+    .testi-card { padding: 24px 18px; }
+    .step-card  { padding: 28px 20px; }
+  }
+  @media (max-width: 380px) {
+    .trade-grid { grid-template-columns: 1fr; }
+    .hero h1 { font-size: 2rem; letter-spacing: -0.5px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- HERO -->
+<section class="hero">
+  <div class="container">
+
+    <div class="hero-badge fade-in">
+      <span class="hero-badge-dot"></span>
+      Nigeria's #1 Skilled Trades Platform
+    </div>
+
+    <h1 class="fade-up d1">
+      Your Trade Skills<br>
+      Are <em>Worth</em> More
+    </h1>
+
+    <p class="hero-sub fade-up d2">
+      Find skilled work as an
+      {% for cat in all_categories|slice:":4" %}{{ cat.name|lower }}{% if not forloop.last %}, {% endif %}{% endfor %}
+      and more. Trusted by workers across Lagos, Abuja, Port Harcourt, and beyond.
+    </p>
+
+    {# ── Hero search with autocomplete ── #}
+    <div class="hero-search-wrap fade-up d3">
+      <form method="get" action="{% url 'marketplace:job_list' %}" id="heroSearchForm">
+        <div class="hero-search">
+          <div class="search-field">
+            <i class="fas fa-search"></i>
+            <input
+              type="text"
+              name="q"
+              id="heroSearchInput"
+              placeholder="e.g. Electrician, Carpenter, Plumber…"
+              autocomplete="off"
+              spellcheck="false"
+            >
+            <button type="button" class="search-clear-hero" id="heroSearchClear"
+                    title="Clear" aria-label="Clear search">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+          <div class="search-loc">
+            <i class="fas fa-map-pin"></i>
+            <select name="state">
+              <option value="">All States</option>
+              {% for val, label in nigerian_states %}
+                <option value="{{ val }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary">
+            <i class="fas fa-search"></i> Find Jobs
+          </button>
+        </div>
+      </form>
+
+      {# Autocomplete dropdown — outside the form so it overlays correctly #}
+      <div class="ac-dropdown" id="heroAcDropdown" role="listbox"></div>
+    </div>
+
+    {# ── Popular tags — top 6 categories ── #}
+    <div class="hero-tags fade-up d4">
+      <span>Popular:</span>
+      {% for cat in all_categories|slice:":6" %}
+        <a href="{% url 'marketplace:job_list' %}?trade={{ cat.pk }}" class="hero-tag">
+          {{ cat.name }}
+        </a>
+      {% empty %}
+        <a href="{% url 'marketplace:job_list' %}?q=electrician" class="hero-tag">Electrician</a>
+        <a href="{% url 'marketplace:job_list' %}?q=solar" class="hero-tag">Solar Installation</a>
+        <a href="{% url 'marketplace:job_list' %}?q=carpenter" class="hero-tag">Carpentry</a>
+        <a href="{% url 'marketplace:job_list' %}?q=plumber" class="hero-tag">Plumbing</a>
+      {% endfor %}
+    </div>
+
+  </div>
+</section>
+
+
+<!-- TRUST BAR — real numbers from DB -->
+<div class="trust-bar">
+  <div class="trust-bar-inner">
+    <div class="trust-stat fade-up">
+      <div class="trust-num">{{ total_workers|default:"0" }}+</div>
+      <div class="trust-lbl">Active Tradespeople</div>
+    </div>
+    <div class="trust-divider"></div>
+    <div class="trust-stat fade-up d1">
+      <div class="trust-num">{{ total_jobs|default:"0" }}+</div>
+      <div class="trust-lbl">Jobs Posted</div>
+    </div>
+    <div class="trust-divider"></div>
+    <div class="trust-stat fade-up d2">
+      <div class="trust-num">{{ total_employers|default:"0" }}+</div>
+      <div class="trust-lbl">Employers</div>
+    </div>
+    <div class="trust-divider"></div>
+    <div class="trust-stat fade-up d3">
+      <div class="trust-num">36</div>
+      <div class="trust-lbl">States Covered</div>
+    </div>
+    <div class="trust-divider"></div>
+    <div class="trust-stat fade-up d4">
+      <div class="trust-num">91%</div>
+      <div class="trust-lbl">Successful Placements</div>
+    </div>
+  </div>
+</div>
+
+
+<!-- TRADE CATEGORIES — dynamic from DB -->
+<section class="section">
+  <div class="container">
+    <div class="section-header">
+      <div>
+        <p class="eyebrow">Browse by Trade</p>
+        <h2 class="section-title">What's Your <span class="amber-text">Craft?</span></h2>
+      </div>
+      <a href="{% url 'marketplace:trade_list' %}" class="btn btn-outline">
+        All Trades <i class="fas fa-arrow-right"></i>
+      </a>
+    </div>
+
+    <div class="trade-grid">
+      {# Cycle through a colour palette for the icon backgrounds #}
+      {% for cat in categories %}
+        {% with idx=forloop.counter0 %}
+        <a href="{% url 'marketplace:trade_detail' slug=cat.slug %}"
+           class="card trade-card fade-up d{{ forloop.counter }}">
+
+          {# Icon — use the category's icon_class, fall back to a generic one #}
+          <div class="trade-icon" style="
+            {% if idx|divisibleby:5 %}background:rgba(251,191,36,0.12);color:#F59E0B;
+            {% elif idx|divisibleby:4 %}background:rgba(249,115,22,0.12);color:#F97316;
+            {% elif idx|divisibleby:3 %}background:rgba(180,120,60,0.12);color:#B87333;
+            {% elif idx|divisibleby:2 %}background:rgba(16,185,129,0.12);color:#10B981;
+            {% elif idx|divisibleby:1 %}background:rgba(244,114,182,0.12);color:#F472B6;
+            {% else %}background:rgba(56,189,248,0.12);color:#38BDF8;
+            {% endif %}
+          ">
+            <i class="{% if cat.icon_class %}{{ cat.icon_class }}{% else %}fas fa-hard-hat{% endif %}"></i>
+          </div>
+
+          <div>
+            <div class="trade-name">{{ cat.name }}</div>
+            <div class="trade-count">
+              {{ cat.job_count }} open job{{ cat.job_count|pluralize }}
+            </div>
+          </div>
+          <div class="trade-arrow"><i class="fas fa-arrow-right"></i></div>
+        </a>
+        {% endwith %}
+      {% empty %}
+        <div style="grid-column:1/-1; text-align:center; color:var(--text-3); padding:48px;">
+          No trade categories yet. Add them in the admin panel.
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+
+<!-- FEATURED JOBS — dynamic from DB -->
+<section class="section jobs-section">
+  <div class="container">
+    <div class="section-header">
+      <div>
+        <p class="eyebrow">Freshly Posted</p>
+        <h2 class="section-title">Featured <span class="amber-text">Openings</span></h2>
+      </div>
+      <a href="{% url 'marketplace:job_list' %}" class="btn btn-outline">
+        Browse All Jobs <i class="fas fa-arrow-right"></i>
+      </a>
+    </div>
+
+    <div class="job-list">
+      {% for job in featured_jobs %}
+        <a href="{% url 'marketplace:job_detail' pk=job.pk %}"
+           class="card job-card fade-up d{{ forloop.counter }}"
+           style="text-decoration:none;">
+
+          <div class="job-logo" style="color:var(--amber);">
+            {% if job.employer.logo %}
+              <img src="{{ job.employer.logo.url }}" alt="{{ job.employer }}"
+                   style="width:100%;height:100%;object-fit:cover;border-radius:14px;">
+            {% else %}
+              <i class="{% if job.trade_category.icon_class %}{{ job.trade_category.icon_class }}{% else %}fas fa-briefcase{% endif %}"></i>
+            {% endif %}
+          </div>
+
+          <div class="job-info">
+            <div class="job-title">{{ job.title }}</div>
+            <div class="job-meta">
+              <span class="job-meta-item">
+                <i class="fas fa-building"></i>
+                {{ job.employer.company_name|default:job.employer.user.username }}
+              </span>
+              {% if job.state %}
+                <span class="job-meta-item">
+                  <i class="fas fa-map-pin"></i>
+                  {{ job.get_state_display }}{% if job.lga %}, {{ job.lga }}{% endif %}
+                </span>
+              {% endif %}
+              {% if job.is_remote %}
+                <span class="job-meta-item" style="color:var(--sky);">
+                  <i class="fas fa-wifi"></i> Remote
+                </span>
+              {% endif %}
+              <span class="job-meta-item">
+                <i class="fas fa-briefcase"></i> {{ job.get_job_type_display }}
+              </span>
+              <span class="job-meta-item">
+                <i class="fas fa-clock"></i> {{ job.created|timesince }} ago
+              </span>
+              {% if job.employer.is_verified %}
+                <span class="badge badge-green">
+                  <i class="fas fa-circle" style="font-size:6px"></i> Verified Employer
+                </span>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="job-right">
+            {% if job.pay_min or job.pay_max %}
+              <div class="job-pay">
+                {% if job.pay_min and job.pay_max %}
+                  ₦{{ job.pay_min|floatformat:"0" }}–{{ job.pay_max|floatformat:"0" }}
+                {% elif job.pay_min %}
+                  ₦{{ job.pay_min|floatformat:"0" }}+
+                {% else %}
+                  up to ₦{{ job.pay_max|floatformat:"0" }}
+                {% endif %}
+                <small>/{{ job.get_pay_type_display }}</small>
+              </div>
+            {% elif job.pay_type == 'negotiable' %}
+              <div class="job-pay" style="font-size:0.9rem;">Negotiable</div>
+            {% endif %}
+
+            <div class="job-tags">
+              {% if job.trade_category %}
+                <span class="badge badge-amber">{{ job.trade_category.name }}</span>
+              {% endif %}
+              {% for skill in job.required_skills.all|slice:":1" %}
+                <span class="badge badge-sky">{{ skill.name }}</span>
+              {% endfor %}
+            </div>
+
+            {% if user.is_authenticated %}
+              <button class="btn-save" aria-label="Save job"
+                      onclick="event.preventDefault(); toggleSaveHome(this, '{{ job.pk }}');">
+                <i class="far fa-heart"></i>
+              </button>
+            {% endif %}
+          </div>
+
+        </a>
+      {% empty %}
+        <div style="text-align:center; padding:64px 24px; color:var(--text-3);">
+          <i class="fas fa-briefcase" style="font-size:2.5rem; display:block; margin-bottom:16px;"></i>
+          <p>No active jobs yet. Check back soon!</p>
+          <a href="{% url 'marketplace:job_list' %}" class="btn btn-outline" style="margin-top:20px;">
+            Browse All Jobs
+          </a>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+
+<!-- AI MATCHING SECTION -->
+<section class="ai-section">
+  <div class="ai-inner z1">
+    <div>
+      <p class="eyebrow">AI-Powered Matching</p>
+      <h2 class="section-title">
+        Smart Jobs That<br><span class="amber-text">Find You</span>
+      </h2>
+      <p class="section-sub">
+        We use AI to understand your skills, experience, and location — then surface the most relevant opportunities automatically.
+        No more endless scrolling.
+      </p>
+
+      <div class="ai-features">
+        <div class="ai-feature">
+          <div class="ai-feature-icon"><i class="fas fa-brain"></i></div>
+          <div>
+            <h4>Skills-Based Matching</h4>
+            <p>Our AI analyses your profile and matches you to jobs by skills — not just job titles.</p>
+          </div>
+        </div>
+        <div class="ai-feature">
+          <div class="ai-feature-icon"><i class="fas fa-map-pin"></i></div>
+          <div>
+            <h4>Location-Aware Search</h4>
+            <p>Find work close to you. We optimise results by state, LGA, and commute distance.</p>
+          </div>
+        </div>
+        <div class="ai-feature">
+          <div class="ai-feature-icon"><i class="fas fa-shield-check"></i></div>
+          <div>
+            <h4>Verified Employers</h4>
+            <p>Every employer is vetted and verified so you can apply with confidence.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ai-visual z1">
+      <div style="position:relative; margin-bottom: 10px;">
+        <span class="ai-label">🤖 Top Matches for You</span>
+        <div class="card match-card" style="margin-top:8px;">
+          <div class="match-avatar">AO</div>
+          <div class="match-info">
+            <div class="match-name">Adewale Okafor</div>
+            <div class="match-trade">⚡ Electrician, 6 yrs • Lagos</div>
+          </div>
+          <div><div class="match-score">96%<br><small>match</small></div></div>
+        </div>
+      </div>
+      <div class="card match-card">
+        <div class="match-avatar" style="background:linear-gradient(135deg,#F97316,#D97706);">BM</div>
+        <div class="match-info">
+          <div class="match-name">Blessing Musa</div>
+          <div class="match-trade">☀️ Solar Installer, 4 yrs • Abuja</div>
+        </div>
+        <div><div class="match-score">91%<br><small>match</small></div></div>
+      </div>
+      <div class="card match-card">
+        <div class="match-avatar" style="background:linear-gradient(135deg,#10B981,#059669);">CA</div>
+        <div class="match-info">
+          <div class="match-name">Chioma Adeola</div>
+          <div class="match-trade">✂️ Hair Stylist, 8 yrs • PH</div>
+        </div>
+        <div><div class="match-score">88%<br><small>match</small></div></div>
+      </div>
+      <div class="card match-card">
+        <div class="match-avatar" style="background:linear-gradient(135deg,#38BDF8,#0EA5E9);">EI</div>
+        <div class="match-info">
+          <div class="match-name">Emmanuel Igwe</div>
+          <div class="match-trade">🔨 Carpenter, 5 yrs • Enugu</div>
+        </div>
+        <div><div class="match-score">85%<br><small>match</small></div></div>
+      </div>
+      <div style="text-align:center; padding:16px 0;">
+        <a href="{% url 'marketplace:dashboard' %}" class="btn btn-primary">
+          <i class="fas fa-magic"></i> Get My AI Matches
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- HOW IT WORKS -->
+<section class="section">
+  <div class="container">
+    <p class="eyebrow">How It Works</p>
+    <h2 class="section-title" style="margin-bottom:52px;">
+      Three Steps to Your<br><span class="amber-text">Next Opportunity</span>
+    </h2>
+
+    <div class="steps-grid">
+      <div class="card step-card fade-up d1">
+        <div class="step-num">01</div>
+        <div class="step-icon"><i class="fas fa-user-pen"></i></div>
+        <h3>Build Your Profile</h3>
+        <p>Create your free profile in minutes. Add your trade skills, experience level, location, and the kind of work you're looking for.</p>
+      </div>
+      <div class="card step-card fade-up d2">
+        <div class="step-num">02</div>
+        <div class="step-icon" style="color:var(--orange);"><i class="fas fa-bolt"></i></div>
+        <h3>Get Smart Matches</h3>
+        <p>Our AI instantly surfaces the most relevant jobs and employers. No endless scrolling — just opportunities that fit your real skills.</p>
+      </div>
+      <div class="card step-card fade-up d3">
+        <div class="step-num">03</div>
+        <div class="step-icon" style="color:var(--emerald);"><i class="fas fa-handshake"></i></div>
+        <h3>Get Hired &amp; Earn</h3>
+        <p>Apply directly, connect with employers, and land your next job. We make it easy to track applications and negotiate your rate.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- TESTIMONIALS -->
+<section class="section jobs-section">
+  <div class="container">
+    <p class="eyebrow">Real Stories</p>
+    <h2 class="section-title" style="margin-bottom:48px;">
+      Tradespeople <span class="amber-text">Winning</span> Daily
+    </h2>
+
+    <div class="testimonials-grid">
+      <div class="card testi-card fade-up d1">
+        <div class="testi-stars">★★★★★</div>
+        <div class="testi-quote">"</div>
+        <p class="testi-text">
+          I was hustling for jobs on WhatsApp for months. Two weeks after joining TradeLink NG,
+          I landed a full-time position with a real construction firm in Abuja.
+          This platform understands us.
+        </p>
+        <div class="testi-author">
+          <div class="testi-avatar">KU</div>
+          <div>
+            <div class="testi-name">Kabiru Usman</div>
+            <div class="testi-role">Site Foreman · Abuja, FCT</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card testi-card fade-up d2">
+        <div class="testi-stars">★★★★★</div>
+        <div class="testi-quote">"</div>
+        <p class="testi-text">
+          As a solar installer with no office address, nobody took me seriously online.
+          On TradeLink NG my verified profile did the talking. I now get 5–6 enquiries every week.
+        </p>
+        <div class="testi-author">
+          <div class="testi-avatar" style="background:linear-gradient(135deg,#F97316,#D97706);">FO</div>
+          <div>
+            <div class="testi-name">Folake Ogunleye</div>
+            <div class="testi-role">Solar Installer · Lagos</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card testi-card fade-up d3">
+        <div class="testi-stars">★★★★★</div>
+        <div class="testi-quote">"</div>
+        <p class="testi-text">
+          I've been doing hair for 12 years but always depended on walk-ins.
+          Now I get clients from across Port Harcourt through the app.
+          My income doubled in 3 months.
+        </p>
+        <div class="testi-author">
+          <div class="testi-avatar" style="background:linear-gradient(135deg,#F472B6,#EC4899);">NA</div>
+          <div>
+            <div class="testi-name">Ngozi Amara</div>
+            <div class="testi-role">Hair Stylist · Port Harcourt</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- CTA -->
+<section class="cta-section">
+  <div class="container">
+    <div class="cta-card z1 fade-up">
+      <p class="eyebrow" style="justify-content:center; margin-bottom:20px;">Start Today</p>
+      <h2>Your Skills Deserve<br><span class="amber-text">To Be Found</span></h2>
+      <p>Join thousands of Nigerian tradespeople already using TradeLink NG to find better work, earn more, and grow their careers.</p>
+      <div class="cta-actions">
+        <a href="/register/" class="btn btn-primary btn-lg">
+          <i class="fas fa-user-plus"></i> Create Free Account
+        </a>
+        <a href="{% url 'marketplace:job_list' %}" class="btn btn-ghost btn-lg">
+          <i class="fas fa-search"></i> Browse Jobs
+        </a>
+      </div>
+      <p style="font-size:0.82rem; color:var(--text-3); margin-top:24px;">
+        No subscription needed &nbsp;·&nbsp; Free to join &nbsp;·&nbsp; Takes 2 minutes
+      </p>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+/* ─────────────────────────────────────────────────────────────────────
+   HERO SEARCH AUTOCOMPLETE
+   Data sources:
+     1. Trade categories — injected from Django context below
+     2. Common Nigerian skilled trade keywords — static fallback list
+   Selecting a suggestion submits the form immediately.
+───────────────────────────────────────────────────────────────────── */
+
+// ── 1. Trade categories from Django context ──────────────────────────
+const TRADE_SUGGESTIONS = [
+  {% for cat in all_categories %}
+  {
+    text: "{{ cat.name|escapejs }}",
+    icon: "{{ cat.icon_class|default:'fas fa-hard-hat'|escapejs }}",
+    jobs: {{ cat.job_count }},
+    url:  "{% url 'marketplace:job_list' %}?trade={{ cat.pk }}",
+  },
+  {% endfor %}
+];
+
+// ── 2. Extra keyword suggestions ─────────────────────────────────────
+const KEYWORD_SUGGESTIONS = [
+  'Electrician','Plumber','Carpenter','Welder','Mason','Painter',
+  'Solar Panel Installation','CCTV Installation','Generator Repair',
+  'AC Technician','Hair Braiding','Locs','Furniture Making',
+  'Roof Framing','Aluminium Fabrication','Steel Fabrication',
+  'POP Ceiling','Screeding','Waterproofing','Tiling','Glazier',
+  'Auto Mechanic','Vulcanizer','Fumigation','Catering','Cleaning',
+].map(k => ({ text: k, icon: 'fas fa-tools', jobs: null, url: null }));
+
+const ALL_AC = [...TRADE_SUGGESTIONS, ...KEYWORD_SUGGESTIONS];
+
+// ── DOM refs ──────────────────────────────────────────────────────────
+const heroInput   = document.getElementById('heroSearchInput');
+const heroDropdown = document.getElementById('heroAcDropdown');
+const heroClear   = document.getElementById('heroSearchClear');
+const heroForm    = document.getElementById('heroSearchForm');
+
+let acIndex = -1;
+let acTimer = null;
+
+// ── Highlight match ───────────────────────────────────────────────────
+function hlMatch(text, q) {
+  if (!q) return text;
+  const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return text.replace(new RegExp(`(${esc})`, 'gi'), '<em>$1</em>');
+}
+
+// ── Render dropdown ───────────────────────────────────────────────────
+function renderAc(query) {
+  if (!query || query.length < 1) { closeAc(); return; }
+
+  const q = query.toLowerCase().trim();
+
+  const results = ALL_AC
+    .filter(s => s.text.toLowerCase().includes(q))
+    .map(s => ({ ...s, score: s.text.toLowerCase().startsWith(q) ? 1 : 0 }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 9);
+
+  if (!results.length) {
+    heroDropdown.innerHTML = `<div class="ac-empty">No suggestions — press Enter to search</div>`;
+    openAc(); return;
+  }
+
+  const trades   = results.filter(r => r.jobs !== null);
+  const keywords = results.filter(r => r.jobs === null);
+  let html = '';
+
+  if (trades.length) {
+    html += `<div class="ac-section-label"><i class="fas fa-hard-hat" style="margin-right:5px;"></i>Trades</div>`;
+    trades.forEach(s => {
+      html += `<div class="ac-item" data-value="${s.text.replace(/"/g,'&quot;')}"
+                    data-url="${s.url || ''}">
+        <i class="${s.icon}"></i>
+        <span>${hlMatch(s.text, query)}</span>
+        ${s.jobs ? `<span class="ac-item-sub">${s.jobs} job${s.jobs !== 1 ? 's' : ''}</span>` : ''}
+      </div>`;
+    });
+  }
+  if (keywords.length) {
+    html += `<div class="ac-section-label"><i class="fas fa-tools" style="margin-right:5px;"></i>Skills</div>`;
+    keywords.forEach(s => {
+      html += `<div class="ac-item" data-value="${s.text.replace(/"/g,'&quot;')}" data-url="">
+        <i class="${s.icon}"></i>
+        <span>${hlMatch(s.text, query)}</span>
+      </div>`;
+    });
+  }
+
+  heroDropdown.innerHTML = html;
+  acIndex = -1;
+
+  heroDropdown.querySelectorAll('.ac-item').forEach(item => {
+    item.addEventListener('mousedown', e => {
+      e.preventDefault();
+      selectAc(item);
+    });
+  });
+
+  openAc();
+}
+
+function openAc()  { heroDropdown.classList.add('open'); }
+function closeAc() { heroDropdown.classList.remove('open'); acIndex = -1; }
+
+function selectAc(item) {
+  const url = item.dataset.url;
+  if (url) {
+    window.location.href = url;
+  } else {
+    heroInput.value = item.dataset.value;
+    closeAc();
+    heroForm.submit();
+  }
+}
+
+function navigateAc(dir) {
+  const items = heroDropdown.querySelectorAll('.ac-item');
+  if (!items.length) return;
+  if (acIndex >= 0) items[acIndex].classList.remove('highlighted');
+  acIndex += dir;
+  if (acIndex < 0) acIndex = items.length - 1;
+  if (acIndex >= items.length) acIndex = 0;
+  items[acIndex].classList.add('highlighted');
+  items[acIndex].scrollIntoView({ block: 'nearest' });
+}
+
+// ── Clear button ──────────────────────────────────────────────────────
+function updateClearHero() {
+  heroClear.classList.toggle('visible', heroInput.value.length > 0);
+}
+heroClear.addEventListener('click', () => {
+  heroInput.value = '';
+  updateClearHero();
+  closeAc();
+  heroInput.focus();
+});
+
+// ── Input events ──────────────────────────────────────────────────────
+heroInput.addEventListener('input', () => {
+  updateClearHero();
+  clearTimeout(acTimer);
+  acTimer = setTimeout(() => renderAc(heroInput.value), 100);
+});
+
+heroInput.addEventListener('keydown', e => {
+  if (!heroDropdown.classList.contains('open')) return;
+  if (e.key === 'ArrowDown')  { e.preventDefault(); navigateAc(1); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); navigateAc(-1); }
+  else if (e.key === 'Enter') {
+    const items = heroDropdown.querySelectorAll('.ac-item');
+    if (acIndex >= 0 && items[acIndex]) { e.preventDefault(); selectAc(items[acIndex]); }
+  }
+  else if (e.key === 'Escape') closeAc();
+});
+
+heroInput.addEventListener('focus', () => {
+  if (heroInput.value.length >= 1) renderAc(heroInput.value);
+});
+
+document.addEventListener('click', e => {
+  if (!document.querySelector('.hero-search-wrap').contains(e.target)) closeAc();
+});
+
+
+/* ─────────────────────────────────────────────────────────────────────
+   SAVE TOGGLE (homepage — optimistic, no backend auth check needed
+   since the button only renders for authenticated users)
+───────────────────────────────────────────────────────────────────── */
+function toggleSaveHome(btn, jobId) {
+  const icon = btn.querySelector('i');
+  fetch(`/jobs/${jobId}/save/`, {
+    method: 'POST',
+    headers: {
+      'X-CSRFToken': '{{ csrf_token }}',
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.saved !== undefined) {
+      btn.classList.toggle('saved', data.saved);
+      icon.className = data.saved ? 'fas fa-heart' : 'far fa-heart';
+    }
+  })
+  .catch(() => {
+    btn.classList.toggle('saved');
+    icon.className = btn.classList.contains('saved') ? 'fas fa-heart' : 'far fa-heart';
+  });
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────
+   INTERSECTION OBSERVER — fade-up animations
+───────────────────────────────────────────────────────────────────── */
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.style.animationPlayState = 'running';
+    }
+  });
+}, { threshold: 0.1 });
+
+document.querySelectorAll('.fade-up, .fade-in').forEach(el => {
+  el.style.animationPlayState = 'paused';
+  observer.observe(el);
+});
+</script>
+{% endblock %}

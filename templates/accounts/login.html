@@ -539,13 +539,188 @@
 
 {% block extra_scripts %}
 <script>
-  // Password toggle
-  function togglePassword(btn) {
-    const input = btn.closest('.pw-wrap').querySelector('input');
-    const icon  = btn.querySelector('i');
-    const isHidden = input.type === 'password';
-    input.type = isHidden ? 'text' : 'password';
-    icon.className = isHidden ? 'far fa-eye-slash' : 'far fa-eye';
+/* ─────────────────────────────────────────────────────────────
+   PASSWORD TOGGLE
+───────────────────────────────────────────────────────────────*/
+function togglePassword(btn) {
+  const input = btn.closest('.pw-wrap').querySelector('input');
+  const icon  = btn.querySelector('i');
+  const isHidden = input.type === 'password';
+  input.type = isHidden ? 'text' : 'password';
+  icon.className = isHidden ? 'far fa-eye-slash' : 'far fa-eye';
+}
+
+/* ─────────────────────────────────────────────────────────────
+   AJAX LOGIN — no page reload
+───────────────────────────────────────────────────────────────*/
+(function () {
+  const form      = document.getElementById('loginForm');
+  const submitBtn = document.getElementById('submitBtn');
+  if (!form) return;
+
+  /* ── helpers ── */
+  function getCSRF() {
+    const el = form.querySelector('[name=csrfmiddlewaretoken]');
+    return el ? el.value : '';
   }
+
+  function setFieldError(fieldName, message) {
+    const input = form.querySelector('[name="' + fieldName + '"]');
+    if (!input) return;
+    input.classList.add('error');
+    // Remove any previous error for this field
+    const existing = input.closest('.form-group').querySelector('.field-error[data-ajax]');
+    if (existing) existing.remove();
+    if (message) {
+      const span = document.createElement('span');
+      span.className = 'field-error';
+      span.setAttribute('data-ajax', '1');
+      span.innerHTML = '<i class="fas fa-circle-exclamation"></i> ' + message;
+      input.closest('.form-group').appendChild(span);
+    }
+  }
+
+  function clearFieldErrors() {
+    form.querySelectorAll('.form-control.error').forEach(el => el.classList.remove('error'));
+    form.querySelectorAll('.field-error[data-ajax]').forEach(el => el.remove());
+    const banner = document.getElementById('ajaxErrorBanner');
+    if (banner) banner.remove();
+  }
+
+  function showBanner(message) {
+    let banner = document.getElementById('ajaxErrorBanner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'ajaxErrorBanner';
+      banner.style.cssText = [
+        'background:rgba(239,68,68,0.08)',
+        'border:1px solid rgba(239,68,68,0.2)',
+        'border-radius:var(--r-lg)',
+        'padding:12px 16px',
+        'font-size:0.87rem',
+        'color:#fca5a5',
+        'display:flex',
+        'align-items:center',
+        'gap:8px',
+        'margin-bottom:4px',
+      ].join(';');
+      // Insert before the first .form-group inside .form-stack
+      const stack = form.querySelector('.form-stack');
+      if (stack) stack.prepend(banner);
+      else form.prepend(banner);
+    }
+    banner.innerHTML = '<i class="fas fa-circle-exclamation"></i> ' + message;
+  }
+
+  function setBtnLoading(loading) {
+    submitBtn.disabled = loading;
+    submitBtn.innerHTML = loading
+      ? '<i class="fas fa-spinner fa-spin"></i> Signing in…'
+      : '<i class="fas fa-sign-in-alt"></i> Sign In';
+  }
+
+  /* ── parse errors from the Django-rendered HTML response ── */
+  function parseErrors(html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const errors = {};
+
+    // Non-field errors
+    const nonField = doc.querySelector('.errorlist.nonfield li, ul.errorlist:not([class*="field"]) li');
+    if (nonField) errors.__all__ = nonField.textContent.trim();
+
+    // Field-level: Django renders <ul class="errorlist"><li>…</li></ul>
+    // after each input. Walk the form fields.
+    ['email', 'password'].forEach(name => {
+      const field = doc.querySelector('[name="' + name + '"]');
+      if (!field) return;
+      // Look for sibling errorlist or nearest errorlist in parent
+      let el = field.nextElementSibling;
+      while (el) {
+        if (el.classList.contains('errorlist') || el.classList.contains('field-error')) {
+          errors[name] = el.textContent.trim();
+          break;
+        }
+        el = el.nextElementSibling;
+      }
+      // Also check parent container
+      if (!errors[name]) {
+        const parent = field.closest('.form-group');
+        if (parent) {
+          const errEl = parent.querySelector('.errorlist li, .field-error');
+          if (errEl) errors[name] = errEl.textContent.trim();
+        }
+      }
+    });
+
+    return errors;
+  }
+
+  /* ── submit handler ── */
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    clearFieldErrors();
+    setBtnLoading(true);
+
+    const data = new FormData(form);
+
+    try {
+      const response = await fetch(form.action, {
+        method: 'POST',
+        body: data,
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRFToken': getCSRF(),
+        },
+        redirect: 'manual',   // catch redirects without following
+        credentials: 'same-origin',
+      });
+
+      // Django redirects to dashboard/home on successful login
+      if (response.type === 'opaqueredirect' || response.status === 302 || response.redirected) {
+        // Follow the redirect properly
+        const dest = response.url || response.headers.get('Location') || '/';
+        window.location.href = dest;
+        return;
+      }
+
+      // 200 means the form was re-rendered with errors
+      if (response.status === 200) {
+        const html = await response.text();
+
+        // Try to extract a redirect from a meta-refresh or inline script
+        const redirectMatch = html.match(/window\.location(?:\.href)?\s*=\s*['"]([^'"]+)['"]/);
+        if (redirectMatch) {
+          window.location.href = redirectMatch[1];
+          return;
+        }
+
+        // Parse and show field errors
+        const errors = parseErrors(html);
+
+        if (errors.__all__) {
+          showBanner(errors.__all__);
+        } else if (errors.email || errors.password) {
+          if (errors.email)    setFieldError('email', errors.email);
+          if (errors.password) setFieldError('password', errors.password);
+        } else {
+          // Fallback: generic error
+          showBanner('Invalid email or password. Please try again.');
+        }
+
+        setBtnLoading(false);
+        return;
+      }
+
+      // Any other status
+      showBanner('Something went wrong. Please try again.');
+      setBtnLoading(false);
+
+    } catch (err) {
+      console.error('Login fetch error:', err);
+      showBanner('Network error — please check your connection and try again.');
+      setBtnLoading(false);
+    }
+  });
+}());
 </script>
 {% endblock %}
