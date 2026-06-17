@@ -43,11 +43,15 @@ class WorkerProfileForm(forms.ModelForm):
 class PortfolioItemForm(forms.ModelForm):
     class Meta:
         model  = PortfolioItem
-        fields = ['image', 'caption', 'trade_context', 'display_order']
+        fields = ['image', 'caption', 'youtube_url', 'trade_context', 'display_order']
         widgets = {
-            'caption': forms.TextInput(attrs={'placeholder': 'Short description of this work'}),
+            'caption': forms.TextInput(attrs={
+                'placeholder': 'Short description of this work'
+            }),
+            'youtube_url': forms.URLInput(attrs={
+                'placeholder': 'https://www.youtube.com/watch?v=… (optional)',
+            }),
         }
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  EMPLOYER PROFILE
@@ -57,15 +61,15 @@ class EmployerProfileForm(forms.ModelForm):
     class Meta:
         model  = EmployerProfile
         fields = [
-            'company_name', 'company_type', 'industry',
-            'about', 'logo', 'website', 'state', 'lga',
+            'company_name', 'company_type',
+            'description', 'website', 'phone', 'state', 'lga',
         ]
         widgets = {
-            'about': forms.Textarea(attrs={'rows': 4,
+            'description': forms.Textarea(attrs={'rows': 4,
                 'placeholder': 'Tell workers about your company or project…'}),
             'website': forms.URLInput(attrs={'placeholder': 'https://'}),
+            'phone': forms.TextInput(attrs={'placeholder': 'e.g. +234 801 234 5678'}),
         }
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  JOB

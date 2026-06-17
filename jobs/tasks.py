@@ -273,3 +273,102 @@ def expire_old_jobs_task() -> None:
     ).update(status=Job.Status.EXPIRED)
 
     logger.info("expire_old_jobs_task: %d jobs expired.", updated)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  ESCROW / MILESTONE TASKS
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Add to settings.py CELERY_BEAT_SCHEDULE:
+# 'auto-release-milestones': {
+#     'task': 'jobs.tasks.auto_release_milestones_task',
+#     'schedule': crontab(hour='*', minute=0),
+# },
+
+@shared_task(ignore_result=True)
+def auto_release_milestones_task():
+    """
+    Runs every hour via Celery Beat.
+    Finds all milestones where:
+      status = IN_REVIEW AND auto_release_at <= now()
+    Calls release_milestone_to_worker() for each.
+    Logs how many were auto-released.
+    """
+    from django.utils import timezone
+    from jobs.models import Milestone
+    from jobs.service.escrow_service import release_milestone_to_worker
+
+    now = timezone.now()
+    milestones = Milestone.objects.filter(
+        status=Milestone.Status.IN_REVIEW,
+        auto_release_at__lte=now,
+    ).select_related('contract')
+
+    count = 0
+    for milestone in milestones:
+        try:
+            released = release_milestone_to_worker(str(milestone.pk))
+            if released:
+                count += 1
+        except Exception:
+            logger.exception(
+                "auto_release_milestones_task: failed for milestone %s",
+                milestone.pk,
+            )
+
+    logger.info("auto_release_milestones_task: auto-released %d milestones.", count)
+
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    acks_late=True,
+    ignore_result=True,
+    retry_backoff=True,
+    retry_backoff_max=120,
+    retry_jitter=True,
+)
+def process_milestone_payout_task(self, milestone_id: str) -> None:
+    """
+    Async wrapper around release_milestone_to_worker().
+    Called by approve_milestone() so payout doesn't block the HTTP request.
+    Retries up to 3 times with exponential backoff on failure.
+    """
+    from jobs.service.escrow_service import release_milestone_to_worker
+
+    logger.info("Task: process_milestone_payout for %s", milestone_id)
+    try:
+        release_milestone_to_worker(milestone_id)
+    except Exception as exc:
+        logger.exception(
+            "Task: process_milestone_payout failed for %s", milestone_id
+        )
+        raise self.retry(exc=exc)
+
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    acks_late=True,
+    ignore_result=True,
+    retry_backoff=True,
+    retry_backoff_max=120,
+    retry_jitter=True,
+)
+def create_transfer_recipient_task(self, worker_bank_account_id: str) -> None:
+    """
+    Async wrapper around create_transfer_recipient().
+    Called after WorkerBankAccount is saved/updated.
+    Retries up to 3 times with exponential backoff on failure.
+    """
+    from jobs.service.escrow_service import create_transfer_recipient
+
+    logger.info("Task: create_transfer_recipient for %s", worker_bank_account_id)
+    try:
+        create_transfer_recipient(worker_bank_account_id)
+    except Exception as exc:
+        logger.exception(
+            "Task: create_transfer_recipient failed for %s",
+            worker_bank_account_id,
+        )
+        raise self.retry(exc=exc)

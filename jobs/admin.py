@@ -32,6 +32,10 @@ from .models import (
     SavedJob,
     Review,
     Notification,
+    Contract,
+    Milestone,
+    WorkerBankAccount,
+    Dispute,
 )
 
 
@@ -276,7 +280,7 @@ class WorkerSkillAdmin(admin.ModelAdmin):
 
 @admin.register(PortfolioItem)
 class PortfolioItemAdmin(admin.ModelAdmin):
-    list_display    = ['worker', 'caption_preview', 'trade_context', 'clip_status', 'created']
+    list_display    = ['worker', 'caption_preview', 'trade_context', 'clip_status', 'created', 'youtube_url']
     list_filter     = ['trade_context']
     search_fields   = ['worker__user__username', 'caption']
     readonly_fields = ['clip_image_embedding', 'created', 'image_preview']
@@ -338,7 +342,7 @@ class EmployerProfileAdmin(admin.ModelAdmin):
             'fields': ('user',),
         }),
         ('Company Info', {
-            'fields': ('company_name', 'company_type', 'industry', 'about', 'logo', 'website'),
+            'fields': ('company_name', 'company_type', 'website'),
         }),
         ('Location', {
             'fields': ('state', 'lga'),
@@ -583,3 +587,90 @@ class NotificationAdmin(admin.ModelAdmin):
     readonly_fields = ['user', 'notif_type', 'title', 'body', 'data', 'created_at']
     date_hierarchy = 'created_at'
     ordering      = ['-created_at']
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  CONTRACT
+# ──────────────────────────────────────────────────────────────────────────────
+
+class MilestoneInline(admin.TabularInline):
+    model = Milestone
+    extra = 0
+    fields = ['title', 'amount', 'status', 'due_date', 'funded_at', 'approved_at', 'display_order']
+    readonly_fields = ['funded_at', 'approved_at']
+    ordering = ['display_order', 'created_at']
+
+
+@admin.register(Contract)
+class ContractAdmin(admin.ModelAdmin):
+    list_display  = ['title', 'employer', 'worker', 'status', 'platform_fee_pct', 'created_at']
+    list_filter   = ['status']
+    search_fields = ['title', 'employer__company_name', 'worker__user__username', 'job__title']
+    readonly_fields = ['id', 'job', 'application', 'employer', 'worker', 'created_at', 'updated_at']
+    date_hierarchy = 'created_at'
+    inlines = [MilestoneInline]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  MILESTONE
+# ──────────────────────────────────────────────────────────────────────────────
+
+@admin.register(Milestone)
+class MilestoneAdmin(admin.ModelAdmin):
+    list_display  = [
+        'title', 'contract', 'amount', 'worker_amount',
+        'status', 'funded_at', 'auto_release_at',
+    ]
+    list_filter   = ['status']
+    search_fields = ['title', 'contract__title', 'paystack_payment_ref']
+    readonly_fields = [
+        'id', 'contract', 'paystack_payment_ref', 'paystack_transfer_ref',
+        'funded_at', 'submitted_at', 'approved_at', 'auto_release_at',
+        'worker_amount', 'created_at', 'updated_at',
+    ]
+    date_hierarchy = 'created_at'
+
+    actions = ['action_force_release']
+
+    @admin.action(description='Force release selected milestones to worker')
+    def action_force_release(self, request, queryset):
+        from jobs.service.escrow_service import release_milestone_to_worker
+        released = 0
+        for milestone in queryset.filter(status__in=[
+            Milestone.Status.IN_REVIEW,
+            Milestone.Status.APPROVED,
+        ]):
+            try:
+                if release_milestone_to_worker(str(milestone.pk)):
+                    released += 1
+            except Exception:
+                pass
+        self.message_user(request, f'{released} milestone(s) released.')
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  DISPUTE
+# ──────────────────────────────────────────────────────────────────────────────
+
+@admin.register(Dispute)
+class DisputeAdmin(admin.ModelAdmin):
+    list_display  = ['milestone', 'raised_by', 'resolution', 'resolved_at', 'created_at']
+    list_filter   = ['resolution']
+    search_fields = ['milestone__title', 'raised_by__username', 'reason']
+    readonly_fields = [
+        'id', 'milestone', 'raised_by', 'evidence',
+        'resolved_at', 'resolved_by', 'created_at',
+    ]
+    date_hierarchy = 'created_at'
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  WORKER BANK ACCOUNT
+# ──────────────────────────────────────────────────────────────────────────────
+
+@admin.register(WorkerBankAccount)
+class WorkerBankAccountAdmin(admin.ModelAdmin):
+    list_display  = ['worker', 'bank_name', 'account_number', 'is_verified', 'created_at']
+    list_filter   = ['is_verified', 'bank_name']
+    search_fields = ['worker__user__username', 'account_name', 'bank_name', 'account_number']
+    readonly_fields = ['id', 'paystack_recipient_code', 'created_at', 'updated_at']

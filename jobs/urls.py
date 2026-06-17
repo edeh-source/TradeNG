@@ -71,6 +71,21 @@ from .views import (
     MarkAllNotificationsReadView,
 )
 
+from .views_escrow import (
+    ContractListView,
+    ContractDetailView,
+    MilestoneCreateView,
+    MilestoneFundView,
+    PaystackCallbackView,
+    MilestoneSubmitWorkView,
+    MilestoneApproveView,
+    MilestoneDisputeView,
+    WorkerBankAccountView,
+    DisputeAdminResolveView,
+)
+
+from .views_webhook import PaystackWebhookView
+
 app_name = 'marketplace'
 
 urlpatterns = [
@@ -240,5 +255,64 @@ urlpatterns = [
         'notifications/read-all/',
         MarkAllNotificationsReadView.as_view(),
         name='notifications_read_all',
+    ),
+
+    # ── Escrow / Milestones ───────────────────────────────────────────────────
+    path(
+        'escrow/contracts/',
+        ContractListView.as_view(),
+        name='contract_list',
+    ),
+    path(
+        'escrow/contracts/<uuid:pk>/',
+        ContractDetailView.as_view(),
+        name='contract_detail',
+    ),
+    path(
+        'escrow/milestones/create/<uuid:contract_pk>/',
+        MilestoneCreateView.as_view(),
+        name='milestone_create',
+    ),
+    path(
+        'escrow/milestones/<uuid:pk>/fund/',
+        MilestoneFundView.as_view(),
+        name='milestone_fund',
+    ),
+    path(
+        'escrow/milestones/<uuid:pk>/submit/',
+        MilestoneSubmitWorkView.as_view(),
+        name='milestone_submit',
+    ),
+    path(
+        'escrow/milestones/<uuid:pk>/approve/',
+        MilestoneApproveView.as_view(),
+        name='milestone_approve',
+    ),
+    path(
+        'escrow/milestones/<uuid:pk>/dispute/',
+        MilestoneDisputeView.as_view(),
+        name='milestone_dispute',
+    ),
+    path(
+        'escrow/bank-account/',
+        WorkerBankAccountView.as_view(),
+        name='bank_account',
+    ),
+    path(
+        'escrow/disputes/<uuid:pk>/resolve/',
+        DisputeAdminResolveView.as_view(),
+        name='dispute_resolve',
+    ),
+    path(
+        'escrow/paystack/callback/',
+        PaystackCallbackView.as_view(),
+        name='paystack_callback',
+    ),
+
+    # ── Webhooks ──────────────────────────────────────────────────────────────
+    path(
+        'webhooks/paystack/',
+        PaystackWebhookView.as_view(),
+        name='paystack_webhook',
     ),
 ]

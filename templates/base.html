@@ -375,11 +375,12 @@
     </a>
 
     <ul class="nav-links">
-      <li><a href="{% url 'home' %}"      class="{% block nav_home %}{% endblock %}">Home</a></li>
-      <li><a href=""                       class="{% block nav_jobs %}{% endblock %}">Find Work</a></li>
-      <li><a href=""                       class="{% block nav_trades %}{% endblock %}">Trades</a></li>
-      <li><a href=""                       class="{% block nav_employers %}{% endblock %}">For Employers</a></li>
-      <li><a href=""                       class="{% block nav_blog %}{% endblock %}">Resources</a></li>
+      <li><a href="{% url 'home' %}"              class="{% block nav_home %}{% endblock %}">Home</a></li>
+      <li><a href=""                               class="{% block nav_jobs %}{% endblock %}">Find Work</a></li>
+      <li><a href="{% url 'mktplace:product_list' %}" class="{% block nav_marketplace %}{% endblock %}">Marketplace</a></li>
+      <li><a href=""                               class="{% block nav_trades %}{% endblock %}">Trades</a></li>
+      <li><a href=""                               class="{% block nav_employers %}{% endblock %}">For Employers</a></li>
+      <li><a href=""                               class="{% block nav_blog %}{% endblock %}">Resources</a></li>
     </ul>
 
     <div class="nav-actions">
@@ -405,6 +406,7 @@
   <div class="mobile-menu" id="mobileMenu">
     <a href="{% url 'home' %}">Home</a>
     <a href="">Find Work</a>
+    <a href="{% url 'mktplace:product_list' %}">Marketplace</a>
     <a href="">Trades</a>
     <a href="">For Employers</a>
     <a href="">Resources</a>

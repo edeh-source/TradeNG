@@ -397,8 +397,8 @@
             type="text"
             name="q"
             id="searchInput"
-            value="{{ request.GET.q|default:'' }}"
-            placeholder="Search jobs, trades, skills…"
+            value="{{ search_query|default:'' }}"
+            placeholder="e.g. fix my generator, solar wiring Lagos…"
             autocomplete="off"
             spellcheck="false"
           >
@@ -520,10 +520,23 @@
         <p class="results-count">
           Showing <strong>{{ jobs|length }}</strong>
           of <strong>{{ jobs.paginator.count }}</strong> jobs
-          {% if request.GET.q %}
-            for &ldquo;<strong>{{ request.GET.q }}</strong>&rdquo;
+          {% if search_query %}
+            for &ldquo;<strong>{{ search_query }}</strong>&rdquo;
           {% endif %}
         </p>
+        {% if used_semantic and search_query %}
+          <span style="
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 0.72rem; font-weight: 700; letter-spacing: 0.5px;
+            padding: 4px 12px; border-radius: var(--r-pill);
+            background: rgba(245,158,11,0.1);
+            border: 1px solid rgba(245,158,11,0.25);
+            color: var(--amber);
+          ">
+            <i class="fas fa-brain" style="font-size:0.68rem;"></i>
+            AI-ranked results
+          </span>
+        {% endif %}
       </div>
 
       {% if jobs %}
@@ -624,7 +637,7 @@
         {% if jobs.has_other_pages %}
           <div class="pagination">
             {% if jobs.has_previous %}
-              <a href="?{% if request.GET.q %}q={{ request.GET.q }}&{% endif %}page={{ jobs.previous_page_number }}"
+              <a href="?{% if search_query %}q={{ search_query|urlencode }}&{% endif %}{% if request.GET.trade %}trade={{ request.GET.trade }}&{% endif %}{% if request.GET.state %}state={{ request.GET.state }}&{% endif %}{% if request.GET.job_type %}job_type={{ request.GET.job_type }}&{% endif %}{% if request.GET.pay_type %}pay_type={{ request.GET.pay_type }}&{% endif %}{% if request.GET.is_remote %}is_remote=on&{% endif %}page={{ jobs.previous_page_number }}"
                  class="page-btn"><i class="fas fa-chevron-left"></i></a>
             {% else %}
               <span class="page-btn disabled"><i class="fas fa-chevron-left"></i></span>
@@ -634,13 +647,13 @@
               {% if jobs.number == num %}
                 <span class="page-btn active">{{ num }}</span>
               {% elif num > jobs.number|add:'-3' and num < jobs.number|add:'3' %}
-                <a href="?{% if request.GET.q %}q={{ request.GET.q }}&{% endif %}page={{ num }}"
+                <a href="?{% if search_query %}q={{ search_query|urlencode }}&{% endif %}{% if request.GET.trade %}trade={{ request.GET.trade }}&{% endif %}{% if request.GET.state %}state={{ request.GET.state }}&{% endif %}{% if request.GET.job_type %}job_type={{ request.GET.job_type }}&{% endif %}{% if request.GET.pay_type %}pay_type={{ request.GET.pay_type }}&{% endif %}{% if request.GET.is_remote %}is_remote=on&{% endif %}page={{ num }}"
                    class="page-btn">{{ num }}</a>
               {% endif %}
             {% endfor %}
 
             {% if jobs.has_next %}
-              <a href="?{% if request.GET.q %}q={{ request.GET.q }}&{% endif %}page={{ jobs.next_page_number }}"
+              <a href="?{% if search_query %}q={{ search_query|urlencode }}&{% endif %}{% if request.GET.trade %}trade={{ request.GET.trade }}&{% endif %}{% if request.GET.state %}state={{ request.GET.state }}&{% endif %}{% if request.GET.job_type %}job_type={{ request.GET.job_type }}&{% endif %}{% if request.GET.pay_type %}pay_type={{ request.GET.pay_type }}&{% endif %}{% if request.GET.is_remote %}is_remote=on&{% endif %}page={{ jobs.next_page_number }}"
                  class="page-btn"><i class="fas fa-chevron-right"></i></a>
             {% else %}
               <span class="page-btn disabled"><i class="fas fa-chevron-right"></i></span>
@@ -651,8 +664,17 @@
       {% else %}
         <div class="empty-state">
           <i class="fas fa-search"></i>
-          <h3>No jobs match your filters</h3>
-          <p>Try adjusting your search terms or removing some filters.</p>
+          {% if search_query %}
+            <h3>No results for &ldquo;{{ search_query }}&rdquo;</h3>
+            <p>
+              Our AI search couldn't find a close match. Try a different phrase —
+              e.g. the trade name (<em>electrician</em>) or a specific task
+              (<em>solar wiring</em>, <em>generator repair</em>, <em>fix my pipe</em>).
+            </p>
+          {% else %}
+            <h3>No jobs match your filters</h3>
+            <p>Try adjusting your filters or removing some criteria.</p>
+          {% endif %}
           <a href="{% url 'marketplace:job_list' %}" class="btn btn-outline" style="margin-top:20px;">
             <i class="fas fa-times"></i> Clear All Filters
           </a>
@@ -743,7 +765,7 @@ function renderSuggestions(query) {
     .slice(0, 10);
 
   if (scored.length === 0) {
-    acDropdown.innerHTML = `<div class="ac-empty">No suggestions found — press Enter to search anyway</div>`;
+    acDropdown.innerHTML = `<div class="ac-empty"><i class="fas fa-brain" style="color:var(--amber);margin-right:6px;font-size:0.78rem;"></i>Press Enter — our AI will find the best matches</div>`;
     openDropdown();
     return;
   }

@@ -3,9 +3,15 @@
 {% block nav_home %}active{% endblock %}
 
 {% block extra_head %}
+
+<!-- ── Libraries: CSS ── -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css"/>
+<link rel="stylesheet" href="https://unpkg.com/aos@2.3.4/dist/aos.css"/>
+
 <style>
   /* =====================================================
      INDEX PAGE — TradeLink NG Homepage
+     ENHANCED: GSAP · Three.js · Swiper · AOS · Unsplash
   ===================================================== */
 
   /* ===== HERO ===== */
@@ -14,7 +20,19 @@
     padding-bottom: clamp(56px, 8vw, 96px);
     position: relative; z-index: 1;
     text-align: center;
+    overflow: hidden;
   }
+
+  /* ── Three.js canvas ── */
+  #heroCanvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    pointer-events: none; z-index: 0;
+    opacity: 0.55;
+  }
+
+  /* ── hero inner must sit above canvas ── */
+  .hero .container { position: relative; z-index: 2; }
 
   .hero-badge {
     display: inline-flex; align-items: center; gap: 8px;
@@ -87,7 +105,6 @@
   }
   .search-field input::placeholder { color: var(--text-3); }
 
-  /* Clear button */
   .search-clear-hero {
     background: none; border: none; cursor: pointer; padding: 0 4px;
     color: var(--text-3); font-size: 0.8rem; flex-shrink: 0;
@@ -164,6 +181,63 @@
   }
   .hero-tag:hover { background: var(--surface-2); border-color: var(--border-strong); color: var(--amber); }
 
+  /* ── Floating worker cards (desktop deco) ── */
+  .hero-workers {
+    position: absolute; top: 50%; transform: translateY(-40%);
+    flex-direction: column; gap: 14px;
+    z-index: 3; display: none;
+  }
+  .hero-workers-left  { left: clamp(8px, 1.5vw, 20px); }
+  .hero-workers-right { right: clamp(8px, 1.5vw, 20px); align-items: flex-end; }
+  @media (min-width: 1480px) { .hero-workers { display: flex; } }
+
+  .wf-card {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px;
+    background: rgba(18, 14, 9, 0.84);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid var(--border-strong);
+    border-radius: 16px;
+    width: 205px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(245,158,11,0.05);
+    transition: var(--t);
+  }
+  .wf-card:hover { border-color: var(--amber); transform: translateY(-2px); box-shadow: 0 20px 48px rgba(0,0,0,0.55), var(--shadow-amber); }
+  .wf-card:nth-child(even) { margin-left: 16px; }
+  .wf-avatar {
+    width: 40px; height: 40px; border-radius: 11px;
+    object-fit: cover; flex-shrink: 0;
+    border: 1px solid var(--border-subtle);
+  }
+  .wf-info { flex: 1; min-width: 0; }
+  .wf-name { font-size: 0.82rem; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .wf-trade { font-size: 0.72rem; color: var(--text-3); margin-top: 2px; }
+  .wf-badge { font-size: 0.72rem; font-weight: 800; color: var(--emerald); white-space: nowrap; flex-shrink: 0; }
+
+  /* ── Scroll indicator ── */
+  .hero-scroll {
+    display: inline-flex; flex-direction: column; align-items: center;
+    gap: 8px; margin-top: 52px; opacity: 0;
+    color: var(--text-3); font-size: 0.7rem; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase;
+  }
+  .hero-scroll-mouse {
+    width: 22px; height: 34px; border: 2px solid var(--border-strong);
+    border-radius: 12px; position: relative;
+  }
+  .hero-scroll-mouse::after {
+    content: '';
+    position: absolute; top: 5px; left: 50%; transform: translateX(-50%);
+    width: 3px; height: 8px; border-radius: 3px; background: var(--amber);
+    animation: scrollPulse 1.8s ease-in-out infinite;
+  }
+  @keyframes scrollPulse {
+    0%   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    80%  { opacity: 0; transform: translateX(-50%) translateY(12px); }
+    100% { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  }
+
   /* Trust bar */
   .trust-bar {
     padding: 32px 0;
@@ -187,6 +261,7 @@
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     background-clip: text;
     margin-bottom: 4px;
+    font-variant-numeric: tabular-nums;
   }
   .trust-lbl { font-size: 0.82rem; color: var(--text-3); font-weight: 500; }
   .trust-divider {
@@ -211,7 +286,15 @@
     padding: 28px 24px;
     cursor: pointer; text-decoration: none;
     display: flex; flex-direction: column; gap: 16px;
+    position: relative; overflow: hidden;
   }
+  .trade-card::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(circle at 25% 25%, rgba(245,158,11,0.06), transparent 65%);
+    opacity: 0; transition: opacity 0.45s ease; pointer-events: none;
+  }
+  .trade-card:hover::after { opacity: 1; }
   .trade-icon {
     width: 52px; height: 52px; border-radius: 14px;
     display: flex; align-items: center; justify-content: center;
@@ -255,11 +338,9 @@
     background: var(--surface-1); border: 1px solid var(--border-subtle);
     display: flex; align-items: center; justify-content: center;
     font-size: 1.3rem; flex-shrink: 0;
-  }
-  .job-info {
-    min-width: 0;
     overflow: hidden;
   }
+  .job-info { min-width: 0; overflow: hidden; }
   .job-title {
     font-family: 'Fraunces', serif;
     font-size: 1.05rem; font-weight: 700;
@@ -312,6 +393,7 @@
   .step-card {
     padding: 36px 28px;
     display: flex; flex-direction: column; gap: 16px;
+    transition: var(--t);
   }
   .step-num {
     font-family: 'Fraunces', serif; font-style: italic;
@@ -325,9 +407,11 @@
     background: linear-gradient(135deg, var(--surface-1), var(--surface-2));
     border: 1px solid var(--border-subtle);
     color: var(--amber); margin-bottom: 4px;
+    transition: var(--t);
   }
+  .step-card:hover .step-icon { transform: scale(1.12) rotate(-4deg); box-shadow: 0 8px 24px rgba(245,158,11,0.18); }
   .step-card h3 { font-family: 'Fraunces', serif; font-size: 1.15rem; font-weight: 700; color: var(--text-1); }
-  .step-card p { font-size: 0.9rem; color: var(--text-2); line-height: 1.7; }
+  .step-card p  { font-size: 0.9rem; color: var(--text-2); line-height: 1.7; }
 
   /* ===== AI SECTION ===== */
   .ai-section {
@@ -355,7 +439,7 @@
     background: var(--bg-card); border: 1px solid var(--border-subtle);
     border-radius: var(--r-lg); transition: var(--t);
   }
-  .ai-feature:hover { border-color: var(--border-strong); }
+  .ai-feature:hover { border-color: var(--border-strong); transform: translateX(4px); }
   .ai-feature-icon {
     width: 42px; height: 42px; border-radius: 11px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
@@ -372,12 +456,21 @@
     transition: var(--t);
   }
   .match-card:hover { border-color: var(--border-strong); }
+  .match-card-top {
+    animation: matchPulse 3.5s ease-in-out infinite;
+  }
+  @keyframes matchPulse {
+    0%,100% { border-color: var(--border-subtle); box-shadow: none; }
+    50%       { border-color: rgba(245,158,11,0.4); box-shadow: 0 0 24px rgba(245,158,11,0.08); }
+  }
   .match-avatar {
     width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0;
     background: linear-gradient(135deg, var(--amber-dark), var(--orange));
     display: flex; align-items: center; justify-content: center;
     font-family: 'Fraunces', serif; font-weight: 800; font-size: 1.1rem; color: #0C0A08;
+    overflow: hidden;
   }
+  .match-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .match-info { flex: 1; min-width: 0; }
   .match-name { font-weight: 700; font-size: 0.95rem; margin-bottom: 3px; }
   .match-trade {
@@ -397,9 +490,38 @@
     text-transform: uppercase; white-space: nowrap;
   }
 
-  /* ===== TESTIMONIALS ===== */
-  .testimonials-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-  .testi-card { padding: 32px; }
+  /* ===== TESTIMONIALS — Swiper ===== */
+  .testimonials-swiper { padding-bottom: 52px !important; }
+  .testimonials-swiper .swiper-slide {
+    height: auto; display: flex;
+  }
+  .testimonials-swiper .testi-card {
+    flex: 1; height: 100%; padding: 32px;
+  }
+  .swiper-pagination.testi-pager {
+    bottom: 0px !important;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .swiper-pagination.testi-pager .swiper-pagination-bullet {
+    background: var(--border-strong); opacity: 1;
+    width: 8px; height: 8px; border-radius: 4px;
+    transition: all 0.35s ease; margin: 0 !important;
+  }
+  .swiper-pagination.testi-pager .swiper-pagination-bullet-active {
+    background: var(--amber); width: 28px; border-radius: 4px;
+  }
+  .testi-nav {
+    display: flex; justify-content: center; gap: 12px; margin-top: 28px;
+  }
+  .testi-nav-btn {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--surface-1); border: 1px solid var(--border-subtle);
+    color: var(--text-2); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: var(--t); font-size: 0.85rem;
+  }
+  .testi-nav-btn:hover { background: var(--surface-2); border-color: var(--border-strong); color: var(--amber); transform: scale(1.05); }
+
   .testi-quote { font-size: 2rem; line-height: 1; color: var(--amber); margin-bottom: 16px; font-family: 'Fraunces', serif; }
   .testi-text { font-size: 0.93rem; color: var(--text-2); line-height: 1.75; margin-bottom: 24px; font-style: italic; }
   .testi-author { display: flex; align-items: center; gap: 12px; }
@@ -408,7 +530,9 @@
     background: linear-gradient(135deg, var(--amber), var(--orange));
     display: flex; align-items: center; justify-content: center;
     font-family: 'Fraunces', serif; font-weight: 800; font-size: 0.9rem; color: #0C0A08;
+    overflow: hidden;
   }
+  .testi-avatar img { width: 100%; height: 100%; object-fit: cover; }
   .testi-name { font-weight: 700; font-size: 0.92rem; margin-bottom: 2px; }
   .testi-role { font-size: 0.8rem; color: var(--text-3); }
   .testi-stars { color: var(--amber); font-size: 0.75rem; margin-bottom: 14px; }
@@ -429,6 +553,15 @@
     background: linear-gradient(135deg, var(--amber), var(--orange), var(--emerald));
     z-index: -1; opacity: 0.15;
   }
+  /* Decorative orbs inside CTA */
+  .cta-orb {
+    position: absolute; border-radius: 50%;
+    filter: blur(56px); pointer-events: none; z-index: 0;
+  }
+  .cta-orb-1 { width: 360px; height: 360px; background: rgba(245,158,11,0.1);  top: -120px; left: -80px; }
+  .cta-orb-2 { width: 280px; height: 280px; background: rgba(249,115,22,0.08); bottom: -90px; right: -50px; }
+  .cta-orb-3 { width: 200px; height: 200px; background: rgba(16,185,129,0.06); top: 30%; left: 45%; }
+  .cta-inner-content { position: relative; z-index: 1; }
   .cta-card h2 {
     font-family: 'Fraunces', serif;
     font-size: clamp(1.8rem, 4vw, 3rem);
@@ -446,7 +579,6 @@
   @media (max-width: 768px) {
     .steps-grid { grid-template-columns: 1fr; }
     .steps-grid::before { display: none; }
-    .testimonials-grid { grid-template-columns: 1fr; }
     .job-card { grid-template-columns: auto 1fr; padding: 18px 20px; }
     .job-right { display: none; }
     .job-title { white-space: normal; }
@@ -457,63 +589,295 @@
       border-radius: 16px;
     }
     .search-field {
-      border-right: none;
-      border-bottom: 1px solid var(--border-subtle);
+      border-right: none; border-bottom: 1px solid var(--border-subtle);
       width: 100%; padding: 12px;
     }
-    .search-loc {
-      border-bottom: none; width: 100%; padding: 12px; min-width: 0;
-    }
+    .search-loc { border-bottom: none; width: 100%; padding: 12px; min-width: 0; }
     .search-loc select { width: 100%; }
     .hero-search .btn-primary { width: 100%; border-radius: 10px; }
     .section-header { flex-direction: column; align-items: flex-start; }
     .cta-actions { flex-direction: column; align-items: stretch; }
     .cta-actions .btn { justify-content: center; }
-    /* Autocomplete full width on stacked layout */
     .ac-dropdown { border-radius: var(--r-md); }
   }
   @media (max-width: 560px) {
     .trade-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
-    .trade-card  { padding: 20px 16px; }
+    .trade-card { padding: 20px 16px; }
     .trust-bar-inner { gap: 16px 24px; }
     .trust-num { font-size: 1.4rem; }
     .job-card { grid-template-columns: auto 1fr; gap: 12px; padding: 14px 16px; }
     .job-logo { width: 42px; height: 42px; font-size: 1rem; }
     .job-meta { gap: 6px 10px; }
     .testi-card { padding: 24px 18px; }
-    .step-card  { padding: 28px 20px; }
+    .step-card { padding: 28px 20px; }
   }
   @media (max-width: 380px) {
     .trade-grid { grid-template-columns: 1fr; }
     .hero h1 { font-size: 2rem; letter-spacing: -0.5px; }
   }
+
+  /* ===== AOS CUSTOM TWEAKS ===== */
+  [data-aos="fade-up"]   { transition-timing-function: cubic-bezier(0.2, 0, 0, 1); }
+  [data-aos="zoom-in"]  { transition-timing-function: cubic-bezier(0.2, 0, 0, 1); }
+  [data-aos="fade-right"],
+  [data-aos="fade-left"] { transition-timing-function: cubic-bezier(0.2, 0, 0, 1); }
+
+  /* ===== DEMO VIDEO SECTION ===== */
+  .demo-section {
+    padding: clamp(56px,8vw,96px) 0;
+    background: linear-gradient(180deg, var(--bg-raised) 0%, var(--bg-base) 100%);
+    border-top: 1px solid var(--border-subtle);
+    position: relative; z-index: 1; overflow: hidden;
+  }
+  .demo-section::before {
+    content: '';
+    position: absolute; width: 600px; height: 600px;
+    border-radius: 50%; filter: blur(100px); opacity: 0.06;
+    background: radial-gradient(circle, var(--amber), var(--orange));
+    bottom: -200px; left: 50%; transform: translateX(-50%);
+    pointer-events: none;
+  }
+  .demo-header {
+    text-align: center; margin-bottom: 52px;
+  }
+  .demo-video-wrap {
+    position: relative;
+    max-width: 860px; margin: 0 auto;
+    border-radius: 24px; overflow: hidden;
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(245,158,11,0.08);
+    background: #000;
+  }
+  /* Glow ring around video */
+  .demo-video-wrap::before {
+    content: '';
+    position: absolute; inset: -2px;
+    border-radius: 26px;
+    background: linear-gradient(135deg, rgba(245,158,11,0.3), rgba(249,115,22,0.2), rgba(16,185,129,0.15));
+    z-index: -1;
+  }
+  .demo-video-wrap iframe {
+    width: 100%; aspect-ratio: 16/9;
+    display: block; border: none;
+  }
+  /* Play button overlay (decorative badge) */
+  .demo-badge {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 10px 22px;
+    background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.25);
+    border-radius: var(--r-pill); font-size: 0.85rem; font-weight: 600;
+    color: var(--amber); margin-bottom: 20px;
+  }
+  .demo-badge i { font-size: 0.75rem; }
+  .demo-sub {
+    font-size: 0.95rem; color: var(--text-2); max-width: 540px;
+    margin: 20px auto 0; line-height: 1.75; text-align: center;
+  }
+  /* Feature chips below video */
+  .demo-chips {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;
+    margin-top: 32px;
+  }
+  .demo-chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 8px 18px;
+    background: var(--surface-1); border: 1px solid var(--border-subtle);
+    border-radius: var(--r-pill); font-size: 0.82rem;
+    color: var(--text-2); font-weight: 500;
+    transition: var(--t);
+  }
+  .demo-chip i { color: var(--amber); font-size: 0.75rem; }
+  .demo-chip:hover { background: var(--surface-2); border-color: var(--border-strong); color: var(--text-1); }
+
+  /* ===== FAQ SECTION ===== */
+  .faq-section {
+    padding: clamp(56px,8vw,96px) 0;
+    position: relative; z-index: 1;
+    background: var(--bg-raised);
+    border-top: 1px solid var(--border-subtle);
+  }
+  .faq-layout {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 64px; align-items: start;
+    max-width: 1200px; margin: 0 auto;
+    padding: 0 clamp(16px,4vw,48px);
+  }
+  .faq-sticky {
+    position: sticky; top: calc(var(--nav-h) + 32px);
+  }
+  .faq-sticky .section-sub {
+    font-size: 0.93rem; color: var(--text-2); line-height: 1.75; margin-bottom: 28px;
+  }
+  .faq-contact {
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px 20px;
+    background: var(--bg-card); border: 1px solid var(--border-subtle);
+    border-radius: var(--r-lg); text-decoration: none;
+    transition: var(--t);
+  }
+  .faq-contact:hover { border-color: var(--border-strong); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.25); }
+  .faq-contact-icon {
+    width: 40px; height: 40px; border-radius: 11px; flex-shrink: 0;
+    background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(249,115,22,0.1));
+    border: 1px solid rgba(245,158,11,0.2); color: var(--amber);
+    display: flex; align-items: center; justify-content: center; font-size: 0.9rem;
+  }
+  .faq-contact-text { font-size: 0.85rem; }
+  .faq-contact-text strong { display: block; font-size: 0.92rem; margin-bottom: 2px; }
+  .faq-contact-text span { color: var(--text-3); }
+  /* Accordion */
+  .faq-list { display: flex; flex-direction: column; gap: 10px; }
+  .faq-item {
+    background: var(--bg-card); border: 1px solid var(--border-subtle);
+    border-radius: var(--r-lg); overflow: hidden;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  }
+  .faq-item.open {
+    border-color: var(--border-strong);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.25), 0 0 0 1px rgba(245,158,11,0.06);
+  }
+  .faq-q {
+    width: 100%; text-align: left; padding: 22px 24px;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    background: none; border: none; cursor: pointer;
+    font-family: 'Outfit', sans-serif; font-size: 0.97rem; font-weight: 600;
+    color: var(--text-1); line-height: 1.45;
+    transition: var(--t);
+  }
+  .faq-q:hover { color: var(--amber); }
+  .faq-q-icon {
+    width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+    background: var(--surface-1); border: 1px solid var(--border-subtle);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem; color: var(--text-3);
+    transition: transform 0.35s cubic-bezier(0.4,0,0.2,1), background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  }
+  .faq-item.open .faq-q-icon {
+    transform: rotate(45deg);
+    background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.3); color: var(--amber);
+  }
+  .faq-a {
+    max-height: 0; overflow: hidden;
+    transition: max-height 0.45s cubic-bezier(0.4,0,0.2,1), padding 0.35s ease;
+    padding: 0 24px;
+  }
+  .faq-item.open .faq-a { max-height: 400px; padding: 0 24px 22px; }
+  .faq-a p { font-size: 0.9rem; color: var(--text-2); line-height: 1.75; }
+  .faq-a a { color: var(--amber); text-decoration: none; font-weight: 600; }
+  .faq-a a:hover { text-decoration: underline; }
+  /* FAQ category tabs */
+  .faq-tabs {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px;
+  }
+  .faq-tab {
+    padding: 6px 18px;
+    background: var(--surface-1); border: 1px solid var(--border-subtle);
+    border-radius: var(--r-pill); font-size: 0.82rem; font-weight: 600;
+    color: var(--text-3); cursor: pointer; transition: var(--t);
+  }
+  .faq-tab:hover, .faq-tab.active {
+    background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.3); color: var(--amber);
+  }
+
+  /* ===== RESPONSIVE — new sections ===== */
+  @media (max-width: 1024px) {
+    .faq-layout { grid-template-columns: 1fr; gap: 40px; }
+    .faq-sticky { position: static; }
+  }
+  @media (max-width: 768px) {
+    .demo-video-wrap { border-radius: 16px; }
+    .demo-chips { gap: 8px; }
+    .demo-chip { font-size: 0.78rem; padding: 7px 14px; }
+    .faq-q { padding: 18px 20px; font-size: 0.93rem; }
+    .faq-item.open .faq-a { padding: 0 20px 18px; }
+  }
+  @media (max-width: 560px) {
+    .demo-section { padding: clamp(40px,6vw,64px) 0; }
+    .faq-section  { padding: clamp(40px,6vw,64px) 0; }
+    .demo-video-wrap { border-radius: 12px; }
+    .faq-q { font-size: 0.9rem; padding: 16px 16px; }
+  }
 </style>
 {% endblock %}
 
+
 {% block content %}
 
-<!-- HERO -->
+<!-- ════════════════════════════════════════════════════════════════
+     HERO
+══════════════════════════════════════════════════════════════════ -->
 <section class="hero">
+
+  <!-- Three.js canvas lives here -->
+  <canvas id="heroCanvas"></canvas>
+
+  <!-- Floating worker deco cards — desktop only (≥1480px) -->
+  <div class="hero-workers hero-workers-left" aria-hidden="true">
+    <div class="wf-card">
+      <img class="wf-avatar"
+           src="https://images.unsplash.com/photo-1621905251918-48416bd8575a?w=80&h=80&fit=crop&q=80"
+           alt="Electrician">
+      <div class="wf-info">
+        <div class="wf-name">Adewale O.</div>
+        <div class="wf-trade">⚡ Electrician</div>
+      </div>
+      <div class="wf-badge">96%</div>
+    </div>
+    <div class="wf-card">
+      <img class="wf-avatar"
+           src="https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?w=80&h=80&fit=crop&q=80"
+           alt="Carpenter">
+      <div class="wf-info">
+        <div class="wf-name">Emmanuel I.</div>
+        <div class="wf-trade">🔨 Carpenter</div>
+      </div>
+      <div class="wf-badge">85%</div>
+    </div>
+  </div>
+
+  <div class="hero-workers hero-workers-right" aria-hidden="true">
+    <div class="wf-card">
+      <img class="wf-avatar"
+           src="https://images.unsplash.com/photo-1589939705384-5185137a7f0f?w=80&h=80&fit=crop&q=80"
+           alt="Solar installer">
+      <div class="wf-info">
+        <div class="wf-name">Blessing M.</div>
+        <div class="wf-trade">☀️ Solar Install.</div>
+      </div>
+      <div class="wf-badge">91%</div>
+    </div>
+    <div class="wf-card">
+      <img class="wf-avatar"
+           src="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=80&h=80&fit=crop&q=80"
+           alt="Plumber">
+      <div class="wf-info">
+        <div class="wf-name">Chioma A.</div>
+        <div class="wf-trade">🔧 Plumber</div>
+      </div>
+      <div class="wf-badge">88%</div>
+    </div>
+  </div>
+
   <div class="container">
 
-    <div class="hero-badge fade-in">
+    <div class="hero-badge" id="heroBadge">
       <span class="hero-badge-dot"></span>
       Nigeria's #1 Skilled Trades Platform
     </div>
 
-    <h1 class="fade-up d1">
+    <h1 id="heroH1">
       Your Trade Skills<br>
       Are <em>Worth</em> More
     </h1>
 
-    <p class="hero-sub fade-up d2">
+    <p class="hero-sub" id="heroSub">
       Find skilled work as an
       {% for cat in all_categories|slice:":4" %}{{ cat.name|lower }}{% if not forloop.last %}, {% endif %}{% endfor %}
       and more. Trusted by workers across Lagos, Abuja, Port Harcourt, and beyond.
     </p>
 
-    {# ── Hero search with autocomplete ── #}
-    <div class="hero-search-wrap fade-up d3">
+    <div class="hero-search-wrap" id="heroSearch">
       <form method="get" action="{% url 'marketplace:job_list' %}" id="heroSearchForm">
         <div class="hero-search">
           <div class="search-field">
@@ -522,7 +886,7 @@
               type="text"
               name="q"
               id="heroSearchInput"
-              placeholder="e.g. Electrician, Carpenter, Plumber…"
+              placeholder="e.g. fix my generator, solar wiring Lagos…"
               autocomplete="off"
               spellcheck="false"
             >
@@ -545,14 +909,11 @@
           </button>
         </div>
       </form>
-
-      {# Autocomplete dropdown — outside the form so it overlays correctly #}
       <div class="ac-dropdown" id="heroAcDropdown" role="listbox"></div>
     </div>
 
-    {# ── Popular tags — top 6 categories ── #}
-    <div class="hero-tags fade-up d4">
-      <span>Popular:</span>
+    <div class="hero-tags" id="heroTags">
+      <span>AI Search:</span>
       {% for cat in all_categories|slice:":6" %}
         <a href="{% url 'marketplace:job_list' %}?trade={{ cat.pk }}" class="hero-tag">
           {{ cat.name }}
@@ -565,45 +926,69 @@
       {% endfor %}
     </div>
 
+    <div class="hero-scroll" id="heroScroll" aria-hidden="true">
+      <div class="hero-scroll-mouse"></div>
+      <span>Scroll</span>
+    </div>
+
   </div>
 </section>
 
 
-<!-- TRUST BAR — real numbers from DB -->
+<!-- ════════════════════════════════════════════════════════════════
+     TRUST BAR
+══════════════════════════════════════════════════════════════════ -->
 <div class="trust-bar">
   <div class="trust-bar-inner">
-    <div class="trust-stat fade-up">
-      <div class="trust-num">{{ total_workers|default:"0" }}+</div>
+
+    <div class="trust-stat" data-aos="fade-up">
+      <div class="trust-num"
+           data-counter="{{ total_workers|default:0 }}"
+           data-suffix="+"
+      >{{ total_workers|default:"0" }}+</div>
       <div class="trust-lbl">Active Tradespeople</div>
     </div>
     <div class="trust-divider"></div>
-    <div class="trust-stat fade-up d1">
-      <div class="trust-num">{{ total_jobs|default:"0" }}+</div>
+
+    <div class="trust-stat" data-aos="fade-up" data-aos-delay="80">
+      <div class="trust-num"
+           data-counter="{{ total_jobs|default:0 }}"
+           data-suffix="+"
+      >{{ total_jobs|default:"0" }}+</div>
       <div class="trust-lbl">Jobs Posted</div>
     </div>
     <div class="trust-divider"></div>
-    <div class="trust-stat fade-up d2">
-      <div class="trust-num">{{ total_employers|default:"0" }}+</div>
+
+    <div class="trust-stat" data-aos="fade-up" data-aos-delay="160">
+      <div class="trust-num"
+           data-counter="{{ total_employers|default:0 }}"
+           data-suffix="+"
+      >{{ total_employers|default:"0" }}+</div>
       <div class="trust-lbl">Employers</div>
     </div>
     <div class="trust-divider"></div>
-    <div class="trust-stat fade-up d3">
-      <div class="trust-num">36</div>
+
+    <div class="trust-stat" data-aos="fade-up" data-aos-delay="240">
+      <div class="trust-num" data-counter="36" data-suffix="">36</div>
       <div class="trust-lbl">States Covered</div>
     </div>
     <div class="trust-divider"></div>
-    <div class="trust-stat fade-up d4">
-      <div class="trust-num">91%</div>
+
+    <div class="trust-stat" data-aos="fade-up" data-aos-delay="320">
+      <div class="trust-num" data-counter="91" data-suffix="%">91%</div>
       <div class="trust-lbl">Successful Placements</div>
     </div>
+
   </div>
 </div>
 
 
-<!-- TRADE CATEGORIES — dynamic from DB -->
+<!-- ════════════════════════════════════════════════════════════════
+     TRADE CATEGORIES
+══════════════════════════════════════════════════════════════════ -->
 <section class="section">
   <div class="container">
-    <div class="section-header">
+    <div class="section-header" data-aos="fade-up">
       <div>
         <p class="eyebrow">Browse by Trade</p>
         <h2 class="section-title">What's Your <span class="amber-text">Craft?</span></h2>
@@ -614,13 +999,13 @@
     </div>
 
     <div class="trade-grid">
-      {# Cycle through a colour palette for the icon backgrounds #}
       {% for cat in categories %}
         {% with idx=forloop.counter0 %}
         <a href="{% url 'marketplace:trade_detail' slug=cat.slug %}"
-           class="card trade-card fade-up d{{ forloop.counter }}">
+           class="card trade-card"
+           data-aos="fade-up"
+           data-aos-delay="{{ forloop.counter0|add:0 }}">
 
-          {# Icon — use the category's icon_class, fall back to a generic one #}
           <div class="trade-icon" style="
             {% if idx|divisibleby:5 %}background:rgba(251,191,36,0.12);color:#F59E0B;
             {% elif idx|divisibleby:4 %}background:rgba(249,115,22,0.12);color:#F97316;
@@ -652,10 +1037,12 @@
 </section>
 
 
-<!-- FEATURED JOBS — dynamic from DB -->
+<!-- ════════════════════════════════════════════════════════════════
+     FEATURED JOBS
+══════════════════════════════════════════════════════════════════ -->
 <section class="section jobs-section">
   <div class="container">
-    <div class="section-header">
+    <div class="section-header" data-aos="fade-up">
       <div>
         <p class="eyebrow">Freshly Posted</p>
         <h2 class="section-title">Featured <span class="amber-text">Openings</span></h2>
@@ -668,7 +1055,8 @@
     <div class="job-list">
       {% for job in featured_jobs %}
         <a href="{% url 'marketplace:job_detail' pk=job.pk %}"
-           class="card job-card fade-up d{{ forloop.counter }}"
+           class="card job-card"
+           data-aos="fade-up"
            style="text-decoration:none;">
 
           <div class="job-logo" style="color:var(--amber);">
@@ -760,10 +1148,56 @@
 </section>
 
 
-<!-- AI MATCHING SECTION -->
+<!-- ════════════════════════════════════════════════════════════════
+     DEMO VIDEO
+══════════════════════════════════════════════════════════════════ -->
+<section class="demo-section">
+  <div class="container">
+
+    <div class="demo-header" data-aos="fade-up">
+      <div class="demo-badge">
+        <i class="fas fa-play-circle"></i> Watch the Demo
+      </div>
+      <h2 class="section-title">
+        See TradeLink NG<br><span class="amber-text">In Action</span>
+      </h2>
+    </div>
+
+    <div class="demo-video-wrap" data-aos="zoom-in" data-aos-duration="800">
+      <!-- Replace src with your actual YouTube demo URL when ready -->
+      <iframe
+        src="https://www.youtube.com/embed/dQw4w9WgXcQ?rel=0&modestbranding=1&color=white"
+        title="TradeLink NG — How to Find Skilled Trade Work in Nigeria"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowfullscreen
+        loading="lazy"
+      ></iframe>
+    </div>
+
+    <p class="demo-sub" data-aos="fade-up" data-aos-delay="100">
+      In under 3 minutes, see how to create your profile, browse open trade jobs, apply to employers, and get AI-matched to the right opportunities across Nigeria.
+    </p>
+
+    <div class="demo-chips" data-aos="fade-up" data-aos-delay="180">
+      <span class="demo-chip"><i class="fas fa-user-check"></i> Profile Setup (60 sec)</span>
+      <span class="demo-chip"><i class="fas fa-search"></i> Browsing Jobs</span>
+      <span class="demo-chip"><i class="fas fa-bolt"></i> AI Matching</span>
+      <span class="demo-chip"><i class="fas fa-paper-plane"></i> Sending Applications</span>
+      <span class="demo-chip"><i class="fas fa-shield-alt"></i> Verified Employer Badges</span>
+      <span class="demo-chip"><i class="fas fa-bell"></i> Job Alerts</span>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════════
+     AI MATCHING
+══════════════════════════════════════════════════════════════════ -->
 <section class="ai-section">
   <div class="ai-inner z1">
-    <div>
+
+    <div data-aos="fade-right">
       <p class="eyebrow">AI-Powered Matching</p>
       <h2 class="section-title">
         Smart Jobs That<br><span class="amber-text">Find You</span>
@@ -774,22 +1208,22 @@
       </p>
 
       <div class="ai-features">
-        <div class="ai-feature">
+        <div class="ai-feature" data-aos="fade-right" data-aos-delay="100">
           <div class="ai-feature-icon"><i class="fas fa-brain"></i></div>
           <div>
             <h4>Skills-Based Matching</h4>
             <p>Our AI analyses your profile and matches you to jobs by skills — not just job titles.</p>
           </div>
         </div>
-        <div class="ai-feature">
+        <div class="ai-feature" data-aos="fade-right" data-aos-delay="200">
           <div class="ai-feature-icon"><i class="fas fa-map-pin"></i></div>
           <div>
             <h4>Location-Aware Search</h4>
             <p>Find work close to you. We optimise results by state, LGA, and commute distance.</p>
           </div>
         </div>
-        <div class="ai-feature">
-          <div class="ai-feature-icon"><i class="fas fa-shield-check"></i></div>
+        <div class="ai-feature" data-aos="fade-right" data-aos-delay="300">
+          <div class="ai-feature-icon"><i class="fas fa-shield-alt"></i></div>
           <div>
             <h4>Verified Employers</h4>
             <p>Every employer is vetted and verified so you can apply with confidence.</p>
@@ -798,11 +1232,13 @@
       </div>
     </div>
 
-    <div class="ai-visual z1">
+    <div class="ai-visual z1" data-aos="fade-left">
       <div style="position:relative; margin-bottom: 10px;">
         <span class="ai-label">🤖 Top Matches for You</span>
-        <div class="card match-card" style="margin-top:8px;">
-          <div class="match-avatar">AO</div>
+        <div class="card match-card match-card-top" style="margin-top:8px;">
+          <div class="match-avatar">
+            <img src="https://images.unsplash.com/photo-1621905251918-48416bd8575a?w=96&h=96&fit=crop&q=80" alt="Adewale">
+          </div>
           <div class="match-info">
             <div class="match-name">Adewale Okafor</div>
             <div class="match-trade">⚡ Electrician, 6 yrs • Lagos</div>
@@ -811,7 +1247,9 @@
         </div>
       </div>
       <div class="card match-card">
-        <div class="match-avatar" style="background:linear-gradient(135deg,#F97316,#D97706);">BM</div>
+        <div class="match-avatar" style="background:linear-gradient(135deg,#F97316,#D97706);">
+          <img src="https://images.unsplash.com/photo-1589939705384-5185137a7f0f?w=96&h=96&fit=crop&q=80" alt="Blessing">
+        </div>
         <div class="match-info">
           <div class="match-name">Blessing Musa</div>
           <div class="match-trade">☀️ Solar Installer, 4 yrs • Abuja</div>
@@ -827,7 +1265,9 @@
         <div><div class="match-score">88%<br><small>match</small></div></div>
       </div>
       <div class="card match-card">
-        <div class="match-avatar" style="background:linear-gradient(135deg,#38BDF8,#0EA5E9);">EI</div>
+        <div class="match-avatar" style="background:linear-gradient(135deg,#38BDF8,#0EA5E9);">
+          <img src="https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?w=96&h=96&fit=crop&q=80" alt="Emmanuel">
+        </div>
         <div class="match-info">
           <div class="match-name">Emmanuel Igwe</div>
           <div class="match-trade">🔨 Carpenter, 5 yrs • Enugu</div>
@@ -840,32 +1280,37 @@
         </a>
       </div>
     </div>
+
   </div>
 </section>
 
 
-<!-- HOW IT WORKS -->
+<!-- ════════════════════════════════════════════════════════════════
+     HOW IT WORKS
+══════════════════════════════════════════════════════════════════ -->
 <section class="section">
   <div class="container">
-    <p class="eyebrow">How It Works</p>
-    <h2 class="section-title" style="margin-bottom:52px;">
-      Three Steps to Your<br><span class="amber-text">Next Opportunity</span>
-    </h2>
+    <div style="text-align:center; margin-bottom:52px;" data-aos="fade-up">
+      <p class="eyebrow" style="justify-content:center;">How It Works</p>
+      <h2 class="section-title">
+        Three Steps to Your<br><span class="amber-text">Next Opportunity</span>
+      </h2>
+    </div>
 
     <div class="steps-grid">
-      <div class="card step-card fade-up d1">
+      <div class="card step-card" data-aos="fade-up" data-aos-delay="0">
         <div class="step-num">01</div>
         <div class="step-icon"><i class="fas fa-user-pen"></i></div>
         <h3>Build Your Profile</h3>
         <p>Create your free profile in minutes. Add your trade skills, experience level, location, and the kind of work you're looking for.</p>
       </div>
-      <div class="card step-card fade-up d2">
+      <div class="card step-card" data-aos="fade-up" data-aos-delay="120">
         <div class="step-num">02</div>
         <div class="step-icon" style="color:var(--orange);"><i class="fas fa-bolt"></i></div>
         <h3>Get Smart Matches</h3>
         <p>Our AI instantly surfaces the most relevant jobs and employers. No endless scrolling — just opportunities that fit your real skills.</p>
       </div>
-      <div class="card step-card fade-up d3">
+      <div class="card step-card" data-aos="fade-up" data-aos-delay="240">
         <div class="step-num">03</div>
         <div class="step-icon" style="color:var(--emerald);"><i class="fas fa-handshake"></i></div>
         <h3>Get Hired &amp; Earn</h3>
@@ -876,104 +1321,317 @@
 </section>
 
 
-<!-- TESTIMONIALS -->
+<!-- ════════════════════════════════════════════════════════════════
+     TESTIMONIALS — Swiper Carousel
+══════════════════════════════════════════════════════════════════ -->
 <section class="section jobs-section">
   <div class="container">
-    <p class="eyebrow">Real Stories</p>
-    <h2 class="section-title" style="margin-bottom:48px;">
-      Tradespeople <span class="amber-text">Winning</span> Daily
-    </h2>
+    <div style="text-align:center; margin-bottom:48px;" data-aos="fade-up">
+      <p class="eyebrow" style="justify-content:center;">Real Stories</p>
+      <h2 class="section-title">
+        Tradespeople <span class="amber-text">Winning</span> Daily
+      </h2>
+    </div>
 
-    <div class="testimonials-grid">
-      <div class="card testi-card fade-up d1">
-        <div class="testi-stars">★★★★★</div>
-        <div class="testi-quote">"</div>
-        <p class="testi-text">
-          I was hustling for jobs on WhatsApp for months. Two weeks after joining TradeLink NG,
-          I landed a full-time position with a real construction firm in Abuja.
-          This platform understands us.
-        </p>
-        <div class="testi-author">
-          <div class="testi-avatar">KU</div>
-          <div>
-            <div class="testi-name">Kabiru Usman</div>
-            <div class="testi-role">Site Foreman · Abuja, FCT</div>
+    <div class="swiper testimonials-swiper" data-aos="fade-up">
+      <div class="swiper-wrapper">
+
+        <div class="swiper-slide">
+          <div class="card testi-card">
+            <div class="testi-stars">★★★★★</div>
+            <div class="testi-quote">"</div>
+            <p class="testi-text">
+              I was hustling for jobs on WhatsApp for months. Two weeks after joining TradeLink NG,
+              I landed a full-time position with a real construction firm in Abuja.
+              This platform understands us.
+            </p>
+            <div class="testi-author">
+              <div class="testi-avatar">KU</div>
+              <div>
+                <div class="testi-name">Kabiru Usman</div>
+                <div class="testi-role">Site Foreman · Abuja, FCT</div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="card testi-card fade-up d2">
-        <div class="testi-stars">★★★★★</div>
-        <div class="testi-quote">"</div>
-        <p class="testi-text">
-          As a solar installer with no office address, nobody took me seriously online.
-          On TradeLink NG my verified profile did the talking. I now get 5–6 enquiries every week.
-        </p>
-        <div class="testi-author">
-          <div class="testi-avatar" style="background:linear-gradient(135deg,#F97316,#D97706);">FO</div>
-          <div>
-            <div class="testi-name">Folake Ogunleye</div>
-            <div class="testi-role">Solar Installer · Lagos</div>
+        <div class="swiper-slide">
+          <div class="card testi-card">
+            <div class="testi-stars">★★★★★</div>
+            <div class="testi-quote">"</div>
+            <p class="testi-text">
+              As a solar installer with no office address, nobody took me seriously online.
+              On TradeLink NG my verified profile did the talking. I now get 5–6 enquiries every week.
+            </p>
+            <div class="testi-author">
+              <div class="testi-avatar" style="background:linear-gradient(135deg,#F97316,#D97706);">FO</div>
+              <div>
+                <div class="testi-name">Folake Ogunleye</div>
+                <div class="testi-role">Solar Installer · Lagos</div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="card testi-card fade-up d3">
-        <div class="testi-stars">★★★★★</div>
-        <div class="testi-quote">"</div>
-        <p class="testi-text">
-          I've been doing hair for 12 years but always depended on walk-ins.
-          Now I get clients from across Port Harcourt through the app.
-          My income doubled in 3 months.
-        </p>
-        <div class="testi-author">
-          <div class="testi-avatar" style="background:linear-gradient(135deg,#F472B6,#EC4899);">NA</div>
-          <div>
-            <div class="testi-name">Ngozi Amara</div>
-            <div class="testi-role">Hair Stylist · Port Harcourt</div>
+        <div class="swiper-slide">
+          <div class="card testi-card">
+            <div class="testi-stars">★★★★★</div>
+            <div class="testi-quote">"</div>
+            <p class="testi-text">
+              I've been doing hair for 12 years but always depended on walk-ins.
+              Now I get clients from across Port Harcourt through the app.
+              My income doubled in 3 months.
+            </p>
+            <div class="testi-author">
+              <div class="testi-avatar" style="background:linear-gradient(135deg,#F472B6,#EC4899);">NA</div>
+              <div>
+                <div class="testi-name">Ngozi Amara</div>
+                <div class="testi-role">Hair Stylist · Port Harcourt</div>
+              </div>
+            </div>
           </div>
         </div>
+
+        <div class="swiper-slide">
+          <div class="card testi-card">
+            <div class="testi-stars">★★★★★</div>
+            <div class="testi-quote">"</div>
+            <p class="testi-text">
+              TradeLink NG changed everything for my welding shop.
+              Within a month I had three long-term contracts lined up. The verified badge alone
+              gives clients the trust they need to commit.
+            </p>
+            <div class="testi-author">
+              <div class="testi-avatar" style="background:linear-gradient(135deg,#38BDF8,#0EA5E9);">CE</div>
+              <div>
+                <div class="testi-name">Chukwuemeka Eze</div>
+                <div class="testi-role">Master Welder · Enugu</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /.swiper-wrapper -->
+      <div class="swiper-pagination testi-pager"></div>
+    </div><!-- /.testimonials-swiper -->
+
+    <div class="testi-nav">
+      <button class="testi-nav-btn" id="testiPrev" aria-label="Previous testimonial">
+        <i class="fas fa-arrow-left"></i>
+      </button>
+      <button class="testi-nav-btn" id="testiNext" aria-label="Next testimonial">
+        <i class="fas fa-arrow-right"></i>
+      </button>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════════
+     FAQ
+══════════════════════════════════════════════════════════════════ -->
+<section class="faq-section" id="faq">
+  <div class="faq-layout">
+
+    <!-- ── Left: sticky intro ── -->
+    <div class="faq-sticky" data-aos="fade-right">
+      <p class="eyebrow">Got Questions?</p>
+      <h2 class="section-title" style="margin-bottom:16px;">
+        Frequently<br><span class="amber-text">Asked</span>
+      </h2>
+      <p class="faq-sticky section-sub">
+        Everything you need to know about TradeLink NG — whether you're a skilled worker looking for jobs or an employer hiring talent.
+      </p>
+      <a href="/contact/" class="faq-contact">
+        <div class="faq-contact-icon"><i class="fas fa-headset"></i></div>
+        <div class="faq-contact-text">
+          <strong>Still have questions?</strong>
+          <span>Chat with our support team</span>
+        </div>
+        <i class="fas fa-arrow-right" style="margin-left:auto; color:var(--text-3); font-size:0.8rem;"></i>
+      </a>
+    </div>
+
+    <!-- ── Right: accordion ── -->
+    <div data-aos="fade-left" data-aos-delay="80">
+
+      <div class="faq-tabs" id="faqTabs">
+        <button class="faq-tab active" data-group="all">All</button>
+        <button class="faq-tab" data-group="workers">For Workers</button>
+        <button class="faq-tab" data-group="employers">For Employers</button>
+        <button class="faq-tab" data-group="platform">Platform</button>
       </div>
+
+      <div class="faq-list" id="faqList">
+
+        <!-- Workers -->
+        <div class="faq-item" data-group="workers">
+          <button class="faq-q" aria-expanded="false">
+            Is TradeLink NG free for skilled workers?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>Yes — creating a worker profile, browsing jobs, and applying to openings is completely free. There are no hidden fees or subscription costs. We believe every Nigerian tradesperson deserves equal access to job opportunities.</p>
+          </div>
+        </div>
+
+        <div class="faq-item" data-group="workers">
+          <button class="faq-q" aria-expanded="false">
+            What trades can I register as on the platform?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>We support a wide range of trades including Electricians, Plumbers, Carpenters, Welders, Masons, Painters, Solar Installers, HVAC Technicians, Auto Mechanics, Hair Stylists, Tailors, Caterers, and many more. If your trade isn't listed, <a href="/contact/">contact us</a> and we'll add it.</p>
+          </div>
+        </div>
+
+        <div class="faq-item" data-group="workers">
+          <button class="faq-q" aria-expanded="false">
+            How does AI job matching work for workers?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>Once your profile is complete, our AI analyses your listed trade skills, years of experience, certifications, and preferred location — then automatically surfaces job openings that best match your profile. The more complete your profile, the better your matches. You can access your personalised matches from your <a href="{% url 'marketplace:dashboard' %}">dashboard</a>.</p>
+          </div>
+        </div>
+
+        <div class="faq-item" data-group="workers">
+          <button class="faq-q" aria-expanded="false">
+            How do I get the Verified Worker badge?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>The Verified badge is awarded after we confirm your identity and at least one skill credential (e.g. trade certificate, references from a previous employer, or a short skills test). Verification boosts your profile visibility significantly and builds trust with employers. Apply via your profile settings.</p>
+          </div>
+        </div>
+
+        <div class="faq-item" data-group="workers">
+          <button class="faq-q" aria-expanded="false">
+            Can I find contract/one-off gigs as well as full-time jobs?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>Absolutely. Job listings are categorised by type: Full-Time, Part-Time, Contract, and One-Off Projects. You can filter the job board by type to find exactly the kind of work that fits your schedule. Many tradespeople use TradeLink NG for both steady employment and side contracts.</p>
+          </div>
+        </div>
+
+        <!-- Employers -->
+        <div class="faq-item" data-group="employers">
+          <button class="faq-q" aria-expanded="false">
+            How do I post a job as an employer?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>Register an employer account, complete your company profile, then click "Post a Job" from your dashboard. Fill in the trade category, location, pay, and requirements — your listing goes live within minutes and is immediately visible to thousands of verified tradespeople. <a href="/register/">Get started free.</a></p>
+          </div>
+        </div>
+
+        <div class="faq-item" data-group="employers">
+          <button class="faq-q" aria-expanded="false">
+            How do I know the workers are genuinely skilled?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>Workers with the <strong style="color:var(--emerald);">Verified</strong> badge have passed our identity and credential check. Beyond that, you can review each worker's star ratings, reviews from past employers, portfolio photos, and years of experience — all displayed on their public profile before you make contact.</p>
+          </div>
+        </div>
+
+        <div class="faq-item" data-group="employers">
+          <button class="faq-q" aria-expanded="false">
+            Is there a cost to hire through TradeLink NG?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>Posting jobs and browsing worker profiles is free. Premium employer plans unlock features like promoted job listings, unlimited direct messaging, and advanced analytics. See our <a href="/pricing/">pricing page</a> for full details.</p>
+          </div>
+        </div>
+
+        <!-- Platform -->
+        <div class="faq-item" data-group="platform">
+          <button class="faq-q" aria-expanded="false">
+            Which Nigerian states does TradeLink NG cover?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>We currently cover all 36 Nigerian states plus the FCT. Our highest concentrations of jobs and workers are currently in Lagos, Abuja, Port Harcourt, Enugu, Kano, and Ibadan — but the platform is growing rapidly in every region.</p>
+          </div>
+        </div>
+
+        <div class="faq-item" data-group="platform">
+          <button class="faq-q" aria-expanded="false">
+            Is my personal data safe on the platform?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>We take data privacy seriously. Your personal information is encrypted, never sold to third parties, and only shared with employers when you apply to their jobs. We comply with the Nigeria Data Protection Regulation (NDPR). See our <a href="/privacy/">Privacy Policy</a> for full details.</p>
+          </div>
+        </div>
+
+        <div class="faq-item" data-group="platform">
+          <button class="faq-q" aria-expanded="false">
+            Does TradeLink NG have a mobile app?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>Our website is fully mobile-optimised and works great on any smartphone browser with no download needed. A dedicated Android and iOS app is currently in development and will be available soon. <a href="/notify/">Join the waitlist</a> to get notified at launch.</p>
+          </div>
+        </div>
+
+      </div><!-- /.faq-list -->
     </div>
   </div>
 </section>
 
 
-<!-- CTA -->
+<!-- ════════════════════════════════════════════════════════════════
+     CTA
+══════════════════════════════════════════════════════════════════ -->
 <section class="cta-section">
   <div class="container">
-    <div class="cta-card z1 fade-up">
-      <p class="eyebrow" style="justify-content:center; margin-bottom:20px;">Start Today</p>
-      <h2>Your Skills Deserve<br><span class="amber-text">To Be Found</span></h2>
-      <p>Join thousands of Nigerian tradespeople already using TradeLink NG to find better work, earn more, and grow their careers.</p>
-      <div class="cta-actions">
-        <a href="/register/" class="btn btn-primary btn-lg">
-          <i class="fas fa-user-plus"></i> Create Free Account
-        </a>
-        <a href="{% url 'marketplace:job_list' %}" class="btn btn-ghost btn-lg">
-          <i class="fas fa-search"></i> Browse Jobs
-        </a>
+    <div class="cta-card" data-aos="zoom-in" data-aos-duration="700">
+
+      <!-- Decorative orbs -->
+      <div class="cta-orb cta-orb-1" aria-hidden="true"></div>
+      <div class="cta-orb cta-orb-2" aria-hidden="true"></div>
+      <div class="cta-orb cta-orb-3" aria-hidden="true"></div>
+
+      <div class="cta-inner-content z1">
+        <p class="eyebrow" style="justify-content:center; margin-bottom:20px;">Start Today</p>
+        <h2>Your Skills Deserve<br><span class="amber-text">To Be Found</span></h2>
+        <p>Join thousands of Nigerian tradespeople already using TradeLink NG to find better work, earn more, and grow their careers.</p>
+        <div class="cta-actions">
+          <a href="/register/" class="btn btn-primary btn-lg">
+            <i class="fas fa-user-plus"></i> Create Free Account
+          </a>
+          <a href="{% url 'marketplace:job_list' %}" class="btn btn-ghost btn-lg">
+            <i class="fas fa-search"></i> Browse Jobs
+          </a>
+        </div>
+        <p style="font-size:0.82rem; color:var(--text-3); margin-top:24px;">
+          No subscription needed &nbsp;·&nbsp; Free to join &nbsp;·&nbsp; Takes 2 minutes
+        </p>
       </div>
-      <p style="font-size:0.82rem; color:var(--text-3); margin-top:24px;">
-        No subscription needed &nbsp;·&nbsp; Free to join &nbsp;·&nbsp; Takes 2 minutes
-      </p>
+
     </div>
   </div>
 </section>
 
 {% endblock %}
 
+
 {% block extra_scripts %}
+
+<!-- ── CDN Libraries (loaded at body-end for performance) ── -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+<script src="https://unpkg.com/aos@2.3.4/dist/aos.js"></script>
+
 <script>
 /* ─────────────────────────────────────────────────────────────────────
    HERO SEARCH AUTOCOMPLETE
-   Data sources:
-     1. Trade categories — injected from Django context below
-     2. Common Nigerian skilled trade keywords — static fallback list
-   Selecting a suggestion submits the form immediately.
 ───────────────────────────────────────────────────────────────────── */
-
-// ── 1. Trade categories from Django context ──────────────────────────
 const TRADE_SUGGESTIONS = [
   {% for cat in all_categories %}
   {
@@ -985,7 +1643,6 @@ const TRADE_SUGGESTIONS = [
   {% endfor %}
 ];
 
-// ── 2. Extra keyword suggestions ─────────────────────────────────────
 const KEYWORD_SUGGESTIONS = [
   'Electrician','Plumber','Carpenter','Welder','Mason','Painter',
   'Solar Panel Installation','CCTV Installation','Generator Repair',
@@ -997,28 +1654,23 @@ const KEYWORD_SUGGESTIONS = [
 
 const ALL_AC = [...TRADE_SUGGESTIONS, ...KEYWORD_SUGGESTIONS];
 
-// ── DOM refs ──────────────────────────────────────────────────────────
-const heroInput   = document.getElementById('heroSearchInput');
+const heroInput    = document.getElementById('heroSearchInput');
 const heroDropdown = document.getElementById('heroAcDropdown');
-const heroClear   = document.getElementById('heroSearchClear');
-const heroForm    = document.getElementById('heroSearchForm');
+const heroClear    = document.getElementById('heroSearchClear');
+const heroForm     = document.getElementById('heroSearchForm');
 
 let acIndex = -1;
 let acTimer = null;
 
-// ── Highlight match ───────────────────────────────────────────────────
 function hlMatch(text, q) {
   if (!q) return text;
   const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return text.replace(new RegExp(`(${esc})`, 'gi'), '<em>$1</em>');
 }
 
-// ── Render dropdown ───────────────────────────────────────────────────
 function renderAc(query) {
   if (!query || query.length < 1) { closeAc(); return; }
-
   const q = query.toLowerCase().trim();
-
   const results = ALL_AC
     .filter(s => s.text.toLowerCase().includes(q))
     .map(s => ({ ...s, score: s.text.toLowerCase().startsWith(q) ? 1 : 0 }))
@@ -1026,7 +1678,7 @@ function renderAc(query) {
     .slice(0, 9);
 
   if (!results.length) {
-    heroDropdown.innerHTML = `<div class="ac-empty">No suggestions — press Enter to search</div>`;
+    heroDropdown.innerHTML = `<div class="ac-empty">Press Enter — our AI will find the best matches</div>`;
     openAc(); return;
   }
 
@@ -1037,8 +1689,7 @@ function renderAc(query) {
   if (trades.length) {
     html += `<div class="ac-section-label"><i class="fas fa-hard-hat" style="margin-right:5px;"></i>Trades</div>`;
     trades.forEach(s => {
-      html += `<div class="ac-item" data-value="${s.text.replace(/"/g,'&quot;')}"
-                    data-url="${s.url || ''}">
+      html += `<div class="ac-item" data-value="${s.text.replace(/"/g,'&quot;')}" data-url="${s.url || ''}">
         <i class="${s.icon}"></i>
         <span>${hlMatch(s.text, query)}</span>
         ${s.jobs ? `<span class="ac-item-sub">${s.jobs} job${s.jobs !== 1 ? 's' : ''}</span>` : ''}
@@ -1057,14 +1708,9 @@ function renderAc(query) {
 
   heroDropdown.innerHTML = html;
   acIndex = -1;
-
   heroDropdown.querySelectorAll('.ac-item').forEach(item => {
-    item.addEventListener('mousedown', e => {
-      e.preventDefault();
-      selectAc(item);
-    });
+    item.addEventListener('mousedown', e => { e.preventDefault(); selectAc(item); });
   });
-
   openAc();
 }
 
@@ -1073,13 +1719,8 @@ function closeAc() { heroDropdown.classList.remove('open'); acIndex = -1; }
 
 function selectAc(item) {
   const url = item.dataset.url;
-  if (url) {
-    window.location.href = url;
-  } else {
-    heroInput.value = item.dataset.value;
-    closeAc();
-    heroForm.submit();
-  }
+  if (url) { window.location.href = url; }
+  else { heroInput.value = item.dataset.value; closeAc(); heroForm.submit(); }
 }
 
 function navigateAc(dir) {
@@ -1093,27 +1734,20 @@ function navigateAc(dir) {
   items[acIndex].scrollIntoView({ block: 'nearest' });
 }
 
-// ── Clear button ──────────────────────────────────────────────────────
 function updateClearHero() {
   heroClear.classList.toggle('visible', heroInput.value.length > 0);
 }
 heroClear.addEventListener('click', () => {
-  heroInput.value = '';
-  updateClearHero();
-  closeAc();
-  heroInput.focus();
+  heroInput.value = ''; updateClearHero(); closeAc(); heroInput.focus();
 });
-
-// ── Input events ──────────────────────────────────────────────────────
 heroInput.addEventListener('input', () => {
   updateClearHero();
   clearTimeout(acTimer);
   acTimer = setTimeout(() => renderAc(heroInput.value), 100);
 });
-
 heroInput.addEventListener('keydown', e => {
   if (!heroDropdown.classList.contains('open')) return;
-  if (e.key === 'ArrowDown')  { e.preventDefault(); navigateAc(1); }
+  if (e.key === 'ArrowDown') { e.preventDefault(); navigateAc(1); }
   else if (e.key === 'ArrowUp') { e.preventDefault(); navigateAc(-1); }
   else if (e.key === 'Enter') {
     const items = heroDropdown.querySelectorAll('.ac-item');
@@ -1121,19 +1755,16 @@ heroInput.addEventListener('keydown', e => {
   }
   else if (e.key === 'Escape') closeAc();
 });
-
 heroInput.addEventListener('focus', () => {
   if (heroInput.value.length >= 1) renderAc(heroInput.value);
 });
-
 document.addEventListener('click', e => {
   if (!document.querySelector('.hero-search-wrap').contains(e.target)) closeAc();
 });
 
 
 /* ─────────────────────────────────────────────────────────────────────
-   SAVE TOGGLE (homepage — optimistic, no backend auth check needed
-   since the button only renders for authenticated users)
+   SAVE TOGGLE
 ───────────────────────────────────────────────────────────────────── */
 function toggleSaveHome(btn, jobId) {
   const icon = btn.querySelector('i');
@@ -1159,19 +1790,267 @@ function toggleSaveHome(btn, jobId) {
 
 
 /* ─────────────────────────────────────────────────────────────────────
-   INTERSECTION OBSERVER — fade-up animations
+   FAQ — Accordion + Category Tabs
 ───────────────────────────────────────────────────────────────────── */
-const observer = new IntersectionObserver((entries) => {
-  entries.forEach(entry => {
-    if (entry.isIntersecting) {
-      entry.target.style.animationPlayState = 'running';
+(function initFAQ() {
+  const list  = document.getElementById('faqList');
+  const tabs  = document.querySelectorAll('.faq-tab');
+  if (!list) return;
+
+  // Accordion toggle
+  list.addEventListener('click', e => {
+    const btn = e.target.closest('.faq-q');
+    if (!btn) return;
+    const item = btn.closest('.faq-item');
+    const isOpen = item.classList.contains('open');
+
+    // Close all
+    list.querySelectorAll('.faq-item.open').forEach(i => {
+      i.classList.remove('open');
+      i.querySelector('.faq-q').setAttribute('aria-expanded', 'false');
+    });
+
+    // Open clicked (unless it was already open)
+    if (!isOpen) {
+      item.classList.add('open');
+      btn.setAttribute('aria-expanded', 'true');
+      // Smooth scroll into view on mobile
+      if (window.innerWidth < 768) {
+        setTimeout(() => item.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+      }
     }
   });
-}, { threshold: 0.1 });
 
-document.querySelectorAll('.fade-up, .fade-in').forEach(el => {
-  el.style.animationPlayState = 'paused';
-  observer.observe(el);
+  // Tab filter
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const group = tab.dataset.group;
+      // Close all open items first
+      list.querySelectorAll('.faq-item.open').forEach(i => {
+        i.classList.remove('open');
+        i.querySelector('.faq-q').setAttribute('aria-expanded', 'false');
+      });
+      list.querySelectorAll('.faq-item').forEach(item => {
+        if (group === 'all' || item.dataset.group === group) {
+          item.style.display = '';
+        } else {
+          item.style.display = 'none';
+        }
+      });
+    });
+  });
+
+  // Open first item by default
+  const firstItem = list.querySelector('.faq-item');
+  if (firstItem) {
+    firstItem.classList.add('open');
+    firstItem.querySelector('.faq-q').setAttribute('aria-expanded', 'true');
+  }
+})();
+
+
+
+AOS.init({
+  duration: 720,
+  once: true,
+  easing: 'ease-out-cubic',
+  offset: 60,
 });
+
+
+/* ─────────────────────────────────────────────────────────────────────
+   THREE.JS — Hero Network Canvas
+───────────────────────────────────────────────────────────────────── */
+(function initThreeHero() {
+  const canvas = document.getElementById('heroCanvas');
+  if (!canvas || typeof THREE === 'undefined') return;
+
+  const heroSection = canvas.closest('.hero');
+  function setSize() {
+    canvas.width  = heroSection.offsetWidth;
+    canvas.height = heroSection.offsetHeight;
+    if (renderer) {
+      renderer.setSize(canvas.width, canvas.height, false);
+      camera.aspect = canvas.width / canvas.height;
+      camera.updateProjectionMatrix();
+    }
+  }
+
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+  const scene  = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 1000);
+  camera.position.z = 32;
+  setSize();
+
+  // ── Nodes ──
+  const NODE_COUNT  = 70;
+  const MAX_LINES   = 160;
+  const LINK_DIST   = 14;
+
+  const nodes = Array.from({ length: NODE_COUNT }, () => ({
+    x:  (Math.random() - 0.5) * 64,
+    y:  (Math.random() - 0.5) * 42,
+    z:  (Math.random() - 0.5) * 18,
+    vx: (Math.random() - 0.5) * 0.012,
+    vy: (Math.random() - 0.5) * 0.012,
+  }));
+
+  // Points
+  const ptPos  = new Float32Array(NODE_COUNT * 3);
+  const ptGeo  = new THREE.BufferGeometry();
+  ptGeo.setAttribute('position', new THREE.BufferAttribute(ptPos, 3));
+  const ptMat  = new THREE.PointsMaterial({ color: 0xF59E0B, size: 0.35, transparent: true, opacity: 0.9 });
+  scene.add(new THREE.Points(ptGeo, ptMat));
+
+  // Lines
+  const lnPos  = new Float32Array(MAX_LINES * 6);
+  const lnGeo  = new THREE.BufferGeometry();
+  lnGeo.setAttribute('position', new THREE.BufferAttribute(lnPos, 3));
+  const lnMat  = new THREE.LineBasicMaterial({ color: 0xF59E0B, transparent: true, opacity: 0.18 });
+  const lines  = new THREE.LineSegments(lnGeo, lnMat);
+  scene.add(lines);
+
+  let rafId;
+  function animate() {
+    rafId = requestAnimationFrame(animate);
+
+    // Move nodes
+    for (let i = 0; i < NODE_COUNT; i++) {
+      nodes[i].x += nodes[i].vx;
+      nodes[i].y += nodes[i].vy;
+      if (Math.abs(nodes[i].x) > 32) nodes[i].vx *= -1;
+      if (Math.abs(nodes[i].y) > 21) nodes[i].vy *= -1;
+      ptPos[i * 3]     = nodes[i].x;
+      ptPos[i * 3 + 1] = nodes[i].y;
+      ptPos[i * 3 + 2] = nodes[i].z;
+    }
+    ptGeo.attributes.position.needsUpdate = true;
+
+    // Rebuild line segments
+    let li = 0;
+    for (let i = 0; i < NODE_COUNT && li < MAX_LINES; i++) {
+      for (let j = i + 1; j < NODE_COUNT && li < MAX_LINES; j++) {
+        const dx = nodes[i].x - nodes[j].x;
+        const dy = nodes[i].y - nodes[j].y;
+        if (dx * dx + dy * dy < LINK_DIST * LINK_DIST) {
+          lnPos[li * 6]     = nodes[i].x; lnPos[li * 6 + 1] = nodes[i].y; lnPos[li * 6 + 2] = 0;
+          lnPos[li * 6 + 3] = nodes[j].x; lnPos[li * 6 + 4] = nodes[j].y; lnPos[li * 6 + 5] = 0;
+          li++;
+        }
+      }
+    }
+    lnGeo.setDrawRange(0, li * 2);
+    lnGeo.attributes.position.needsUpdate = true;
+
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  // Resize
+  const ro = new ResizeObserver(() => setSize());
+  ro.observe(heroSection);
+
+  // Pause when off-screen
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) cancelAnimationFrame(rafId);
+    else animate();
+  });
+})();
+
+
+/* ─────────────────────────────────────────────────────────────────────
+   GSAP — Hero entrance + floating worker cards
+───────────────────────────────────────────────────────────────────── */
+(function initGSAP() {
+  if (typeof gsap === 'undefined') return;
+
+  // Set initial states
+  gsap.set(['#heroBadge','#heroH1','#heroSub','#heroSearch','#heroTags'], {
+    opacity: 0, y: 24,
+  });
+  gsap.set('#heroScroll', { opacity: 0, y: 10 });
+  gsap.set('.wf-card', { opacity: 0, scale: 0.9 });
+
+  // Hero timeline
+  gsap.timeline({ delay: 0.25 })
+    .to('#heroBadge', { opacity: 1, y: 0, duration: 0.65, ease: 'power3.out' })
+    .to('#heroH1',    { opacity: 1, y: 0, duration: 0.8,  ease: 'power3.out' }, '-=0.4')
+    .to('#heroSub',   { opacity: 1, y: 0, duration: 0.65, ease: 'power3.out' }, '-=0.45')
+    .to('#heroSearch',{ opacity: 1, y: 0, duration: 0.65, ease: 'power3.out' }, '-=0.38')
+    .to('#heroTags',  { opacity: 1, y: 0, duration: 0.55, ease: 'power3.out' }, '-=0.3')
+    .to('#heroScroll',{ opacity: 1, y: 0, duration: 0.5,  ease: 'power3.out' }, '-=0.2')
+    .to('.wf-card',   { opacity: 1, scale: 1, stagger: 0.14, duration: 0.75, ease: 'back.out(1.5)' }, '-=0.65');
+
+  // Floating animation for worker cards
+  gsap.to('.hero-workers-left  .wf-card:nth-child(1)', { y: -10, repeat: -1, yoyo: true, duration: 3.2, ease: 'sine.inOut' });
+  gsap.to('.hero-workers-left  .wf-card:nth-child(2)', { y: -8,  repeat: -1, yoyo: true, duration: 3.8, ease: 'sine.inOut', delay: 0.7 });
+  gsap.to('.hero-workers-right .wf-card:nth-child(1)', { y: -9,  repeat: -1, yoyo: true, duration: 3.5, ease: 'sine.inOut', delay: 0.4 });
+  gsap.to('.hero-workers-right .wf-card:nth-child(2)', { y: -11, repeat: -1, yoyo: true, duration: 4.0, ease: 'sine.inOut', delay: 1.1 });
+})();
+
+
+/* ─────────────────────────────────────────────────────────────────────
+   SWIPER — Testimonials Carousel
+───────────────────────────────────────────────────────────────────── */
+(function initSwiper() {
+  if (typeof Swiper === 'undefined') return;
+
+  const swiper = new Swiper('.testimonials-swiper', {
+    slidesPerView: 1,
+    spaceBetween: 20,
+    loop: true,
+    autoplay: { delay: 5000, disableOnInteraction: false, pauseOnMouseEnter: true },
+    pagination: { el: '.testi-pager', clickable: true },
+    breakpoints: {
+      640:  { slidesPerView: 2, spaceBetween: 20 },
+      1024: { slidesPerView: 3, spaceBetween: 24 },
+    },
+    on: { slideChange: () => {} },
+  });
+
+  document.getElementById('testiPrev').addEventListener('click', () => swiper.slidePrev());
+  document.getElementById('testiNext').addEventListener('click', () => swiper.slideNext());
+})();
+
+
+/* ─────────────────────────────────────────────────────────────────────
+   TRUST BAR — Animated Counters
+───────────────────────────────────────────────────────────────────── */
+(function initCounters() {
+  const counters = document.querySelectorAll('.trust-num[data-counter]');
+  if (!counters.length) return;
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      const el     = entry.target;
+      const target = parseInt(el.dataset.counter, 10) || 0;
+      const suffix = el.dataset.suffix || '';
+      const start  = performance.now();
+      const dur    = 1800;
+
+      // Only animate if target > 0 (DB might have real numbers)
+      if (target === 0) return;
+
+      function tick(now) {
+        const p = Math.min((now - start) / dur, 1);
+        const eased = 1 - Math.pow(1 - p, 3);
+        const val = Math.round(target * eased);
+        el.textContent = val.toLocaleString() + suffix;
+        if (p < 1) requestAnimationFrame(tick);
+        else el.textContent = target.toLocaleString() + suffix;
+      }
+      requestAnimationFrame(tick);
+      observer.unobserve(el);
+    });
+  }, { threshold: 0.6 });
+
+  counters.forEach(c => observer.observe(c));
+})();
+
 </script>
 {% endblock %}

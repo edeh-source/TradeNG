@@ -776,6 +776,43 @@
         {# ── RIGHT SIDEBAR ── #}
         <div class="ed-sidebar">
 
+          {# Milestones awaiting payment #}
+          {% if pending_milestones %}
+          <div class="ed-info-card fade-up" style="border-color:rgba(245,158,11,0.25); background:rgba(245,158,11,0.04);">
+            <div class="ed-section-head" style="margin-bottom:14px;">
+              <i class="fas fa-triangle-exclamation"></i> Awaiting Payment
+              <span class="ed-section-count">{{ pending_milestones_total }}</span>
+            </div>
+            <div class="ed-app-list">
+              {% for milestone in pending_milestones %}
+              <div class="ed-app-card fade-up">
+                <div style="min-width:0;flex:1;">
+                  <div class="ed-app-name">{{ milestone.title }}</div>
+                  <div class="ed-app-time">
+                    {{ milestone.contract.title|truncatechars:32 }} ·
+                    {{ milestone.contract.worker.user.get_full_name|default:milestone.contract.worker.user.username }}
+                  </div>
+                </div>
+                <div class="ed-app-score" style="background:rgba(245,158,11,0.12); color:var(--amber);">
+                  ₦{{ milestone.amount|floatformat:0 }}
+                </div>
+              </div>
+              <div class="ed-app-actions" style="margin-top:-4px; margin-bottom:8px;">
+                <a href="{% url 'marketplace:contract_detail' pk=milestone.contract.pk %}#milestone-{{ milestone.pk }}"
+                   class="ed-app-btn amber">
+                  <i class="fas fa-lock" style="font-size:0.68rem;"></i> Fund Escrow
+                </a>
+              </div>
+              {% endfor %}
+            </div>
+            {% if pending_milestones_total > pending_milestones|length %}
+            <a href="{% url 'marketplace:contract_list' %}" class="ed-quick-link" style="margin-top:8px;">
+              <i class="fas fa-arrow-right"></i> View all {{ pending_milestones_total }} pending
+            </a>
+            {% endif %}
+          </div>
+          {% endif %}
+
           {# Pending Applications #}
           <div>
             <div class="ed-section-head">
@@ -845,6 +882,9 @@
             </a>
             <a href="{% url 'marketplace:employer_profile_public' pk=employer.pk %}" class="ed-quick-link">
               <i class="fas fa-eye"></i> View Public Profile
+            </a>
+            <a href="{% url 'marketplace:contract_list' %}" class="ed-quick-link">
+              <i class="fas fa-file-contract"></i> Escrow Contracts
             </a>
             <a href="{% url 'marketplace:notifications' %}" class="ed-quick-link">
               <i class="fas fa-bell"></i> Notifications

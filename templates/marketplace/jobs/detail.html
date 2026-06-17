@@ -1005,7 +1005,7 @@
               {% endfor %}
             </div>
             <div style="margin-top:16px;">
-              <a href="{% url 'marketplace:trade_detail' slug=job.trade_category.slug %}"
+              <a href="{% url 'marketplace:job_detail' pk=job.pk %}"
                  class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;">
                 View all {{ job.trade_category.name }} jobs
                 <i class="fas fa-arrow-right" style="font-size:0.78rem;"></i>

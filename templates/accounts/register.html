@@ -1215,7 +1215,10 @@ body { display: flex; flex-direction: column; }
     if (ok) goToStep(3);
   }
 
-  document.getElementById('registerForm').addEventListener('submit', function (e) {
+  document.getElementById('registerForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+
+    /* ── client-side validation (unchanged) ── */
     const pw1      = document.getElementById('password').value;
     const pw2      = document.getElementById('password2').value;
     const terms    = document.getElementById('terms').checked;
@@ -1236,21 +1239,167 @@ body { display: flex; flex-direction: column; }
     } else {
       termsErr.style.display = 'none';
     }
+    if (!ok) return;
 
-    if (!ok) {
-      e.preventDefault();
-      return;
-    }
-
+    /* ── format phone before sending ── */
     const phoneInput = document.getElementById('phone_number');
     const digits     = phoneInput.value.replace(/\D/g, '').replace(/^0/, '');
-    if (digits.length === 10) {
-      phoneInput.value = '+234' + digits;
-    }
+    const originalPhone = phoneInput.value;
+    if (digits.length === 10) phoneInput.value = '+234' + digits;
 
+    /* ── loading state ── */
     const btn = document.getElementById('submitBtn');
     btn.disabled  = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating your account…';
+
+    const form = document.getElementById('registerForm');
+    const data = new FormData(form);
+
+    function getCSRF() {
+      const el = form.querySelector('[name=csrfmiddlewaretoken]');
+      return el ? el.value : '';
+    }
+
+    /* ── helpers to inject server errors ── */
+    function clearAjaxErrors() {
+      form.querySelectorAll('[data-ajax-err]').forEach(el => el.remove());
+      form.querySelectorAll('.is-error[data-ajax-marked]').forEach(el => {
+        el.classList.remove('is-error');
+        el.removeAttribute('data-ajax-marked');
+      });
+    }
+
+    function injectFieldError(fieldId, message) {
+      const input = document.getElementById(fieldId);
+      if (!input) return;
+      input.classList.add('is-error');
+      input.setAttribute('data-ajax-marked', '1');
+      // find or create the field-msg span after the field group
+      const group = input.closest('.form-group') || input.parentElement;
+      const existing = group.querySelector('[data-ajax-err]');
+      if (existing) { existing.textContent = message; return; }
+      const span = document.createElement('span');
+      span.className = 'field-msg error';
+      span.setAttribute('data-ajax-err', '1');
+      span.innerHTML = '<i class="fas fa-circle-exclamation"></i> ' + message;
+      group.appendChild(span);
+    }
+
+    function injectNonFieldError(message) {
+      let el = document.querySelector('.non-field-errors[data-ajax-err]');
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'field-msg error non-field-errors';
+        el.setAttribute('data-ajax-err', '1');
+        el.style.cssText = 'background:rgba(239,68,68,0.06);padding:12px 14px;border-radius:var(--r-md);border:1px solid rgba(239,68,68,0.15);';
+        const stack = document.querySelector('#step-3 .form-stack');
+        if (stack) stack.prepend(el);
+      }
+      el.innerHTML = '<i class="fas fa-triangle-exclamation"></i> ' + message;
+    }
+
+    /* ── parse server-rendered HTML for errors ── */
+    function parseServerErrors(html) {
+      const doc    = new DOMParser().parseFromString(html, 'text/html');
+      const result = { nonField: null, fields: {} };
+
+      // Non-field errors
+      const nfList = doc.querySelector('.non-field-errors .field-msg, .non-field-errors');
+      if (nfList) result.nonField = nfList.textContent.replace(/[\u26A0\uFE0F]/g, '').trim();
+
+      // Field errors — look for is-error inputs and sibling field-msg.error
+      const fieldMap = {
+        first_name:    'first_name',
+        last_name:     'last_name',
+        username:      'username',
+        email:         'email',
+        phone_number:  'phone_number',
+        password1:     'password',
+        password2:     'password2',
+      };
+      Object.entries(fieldMap).forEach(([name, id]) => {
+        const input = doc.querySelector('[name="' + name + '"]');
+        if (!input) return;
+        const group = input.closest('.form-group') || input.parentElement;
+        if (!group) return;
+        const errEl = group.querySelector('.field-msg.error, .errorlist li');
+        if (errEl) result.fields[id] = errEl.textContent.replace(/[⚠️]/g, '').trim();
+      });
+
+      return result;
+    }
+
+    try {
+      const response = await fetch(form.action, {
+        method: 'POST',
+        body: data,
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRFToken': getCSRF(),
+        },
+        redirect: 'manual',
+        credentials: 'same-origin',
+      });
+
+      /* ── success: Django redirects ── */
+      if (response.type === 'opaqueredirect' || response.status === 302 || response.redirected) {
+        const dest = response.url || response.headers.get('Location') || '/';
+        window.location.href = dest;
+        return;
+      }
+
+      /* ── failure: form re-rendered with errors ── */
+      if (response.status === 200) {
+        const html = await response.text();
+
+        // Check for embedded redirect
+        const redirectMatch = html.match(/window\.location(?:\.href)?\s*=\s*['"]([^'"]+)['"]/);
+        if (redirectMatch) { window.location.href = redirectMatch[1]; return; }
+
+        clearAjaxErrors();
+        const { nonField, fields } = parseServerErrors(html);
+
+        // Step 2 fields
+        const step2Fields = ['first_name', 'last_name', 'username', 'email', 'phone_number'];
+        const step3Fields = ['password', 'password2'];
+
+        let hasStep2 = false, hasStep3 = false;
+
+        Object.entries(fields).forEach(([id, msg]) => {
+          injectFieldError(id, msg);
+          if (step2Fields.includes(id)) hasStep2 = true;
+          if (step3Fields.includes(id)) hasStep3 = true;
+        });
+
+        if (nonField) {
+          injectNonFieldError(nonField);
+          hasStep3 = true;
+        }
+
+        // Restore phone display value
+        phoneInput.value = originalPhone;
+
+        // Jump to the earliest step with errors
+        if (hasStep2)       goToStep(2);
+        else if (hasStep3)  goToStep(3);
+
+        btn.disabled  = false;
+        btn.innerHTML = '<i class="fas fa-user-plus"></i> Create Account';
+        return;
+      }
+
+      // Unexpected status
+      injectNonFieldError('Something went wrong. Please try again.');
+      btn.disabled  = false;
+      btn.innerHTML = '<i class="fas fa-user-plus"></i> Create Account';
+
+    } catch (err) {
+      console.error('Register fetch error:', err);
+      phoneInput.value = originalPhone;
+      injectNonFieldError('Network error — please check your connection and try again.');
+      btn.disabled  = false;
+      btn.innerHTML = '<i class="fas fa-user-plus"></i> Create Account';
+    }
   });
 
   (function () {

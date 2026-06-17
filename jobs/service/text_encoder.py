@@ -34,14 +34,18 @@ Usage
 import logging
 import threading
 from typing import List, Optional
+import os
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# Change this to 'all-MiniLM-L6-v2' for a faster, lighter model.
-TEXT_MODEL_NAME = 'all-mpnet-base-v2'
-EMBEDDING_DIM   = 768   # matches all-mpnet-base-v2 output
+# Fallback model name (HuggingFace hub id) used ONLY if no path is configured.
+# NOTE: do not resolve os.environ here at module level — Django settings and
+# os.environ.setdefault() calls in settings.py may not have run yet when this
+# module is first imported.  The path is resolved lazily inside _ensure_loaded().
+_DEFAULT_MODEL_NAME = 'sentence-transformers/all-mpnet-base-v2'
+EMBEDDING_DIM       = 768   # matches all-mpnet-base-v2 output
 
 
 class TextEncoder:
@@ -71,19 +75,54 @@ class TextEncoder:
     # ── Private ─────────────────────────────────────────────────────────────
 
     def _ensure_loaded(self) -> None:
-        """Load the model on first call. Subsequent calls are a no-op."""
+        """Load the model on first call. Subsequent calls are a no-op.
+
+        The model path is resolved HERE (lazily), not at module import time.
+        This guarantees that settings.py os.environ.setdefault() calls have
+        already run before we look up TEXT_ENCODER_MODEL_PATH.
+
+        We also set HF_HUB_OFFLINE=1 unconditionally so that
+        SentenceTransformer() never attempts a network round-trip to
+        huggingface.co — it fails fast with a clear error instead of hanging.
+        """
         if self._model is not None:
             return
         with self._model_lock:
             if self._model is not None:
                 return
+
+            # ── Resolve model path lazily ────────────────────────────────
+            model_path = os.environ.get('TEXT_ENCODER_MODEL_PATH', '').strip()
+            if not model_path:
+                # No explicit path set — warn loudly and use hub name as
+                # last resort (will only work if already cached by HF).
+                logger.warning(
+                    "TEXT_ENCODER_MODEL_PATH is not set. "
+                    "Falling back to hub name '%s'. "
+                    "Set TEXT_ENCODER_MODEL_PATH to the absolute snapshot "
+                    "directory to guarantee offline loading.",
+                    _DEFAULT_MODEL_NAME,
+                )
+                model_path = _DEFAULT_MODEL_NAME
+            else:
+                # Validate the path exists before attempting to load
+                if not os.path.isdir(model_path):
+                    raise FileNotFoundError(
+                        f"TEXT_ENCODER_MODEL_PATH does not exist: {model_path!r}\n"
+                        "Check your settings.py SNAPSHOT_HASH and that the model "
+                        "has been downloaded."
+                    )
+
+            # HF_HUB_OFFLINE and TRANSFORMERS_OFFLINE are set in settings.py
+            # before any huggingface import — no need to set them again here.
+
             try:
                 from sentence_transformers import SentenceTransformer
-                logger.info("Loading sentence-transformer model %s …", TEXT_MODEL_NAME)
-                self._model = SentenceTransformer(TEXT_MODEL_NAME)
-                logger.info("Text encoder loaded (dim=%d).", EMBEDDING_DIM)
+                logger.info("Loading sentence-transformer from %r …", model_path)
+                self._model = SentenceTransformer(model_path)
+                logger.info("Text encoder ready (dim=%d).", EMBEDDING_DIM)
             except Exception as exc:
-                logger.exception("Failed to load text encoder: %s", exc)
+                logger.exception("Failed to load text encoder from %r: %s", model_path, exc)
                 raise
 
     # ── Public API ───────────────────────────────────────────────────────────

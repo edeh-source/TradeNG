@@ -9,13 +9,20 @@ import dj_database_url
 from dotenv import load_dotenv
 load_dotenv()
 
+# ── Offline mode for HuggingFace ──────────────────────────────────────────────
+# Must be set HERE, at the very top of settings, before any import of
+# sentence_transformers / transformers / huggingface_hub can occur.
+# Setting them inside text_encoder._ensure_loaded() is too late — the
+# huggingface_hub library caches its "check for updates" intent at import time.
+os.environ['HF_HUB_OFFLINE']      = '1'
+os.environ['TRANSFORMERS_OFFLINE'] = '1'
+# ─────────────────────────────────────────────────────────────────────────────
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# ==================================
-# SECURITY
-# ==================================
+
 
 SECRET_KEY = os.environ.get('SECRET_KEY')
 
@@ -40,6 +47,7 @@ INSTALLED_APPS = [
     "core.apps.CoreConfig",
     "jobs.apps.JobsConfig",
     'django_celery_results',
+    'django_celery_beat',
     'django.contrib.humanize',
     'django.contrib.sites',
     'django.contrib.sitemaps',
@@ -48,6 +56,7 @@ INSTALLED_APPS = [
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
     'allauth.socialaccount.providers.facebook',
+    'marketplace.apps.MarketplaceConfig',
 ]
 
 if not DEBUG:
@@ -316,6 +325,16 @@ CELERY_REDIS_BACKEND_USE_SSL = {
 CELERY_BROKER_USE_SSL = {
     'ssl_cert_reqs': None,
 }
+
+# ==================================
+# PAYSTACK
+# ==================================
+
+PAYSTACK_SECRET_KEY     = os.environ.get('PAYSTACK_SECRET_KEY', '')
+PAYSTACK_PUBLIC_KEY     = os.environ.get('PAYSTACK_PUBLIC_KEY', '')
+PAYSTACK_CALLBACK_URL   = os.environ.get('PAYSTACK_CALLBACK_URL', 'http://localhost:8000/escrow/paystack/callback/')
+PAYSTACK_WEBHOOK_SECRET = os.environ.get('PAYSTACK_SECRET_KEY', '')  # Same key used for webhook HMAC
+
 # ==================================
 # EMAIL
 # ==================================
@@ -331,140 +350,27 @@ if DEBUG:
     DEFAULT_FROM_EMAIL  = os.environ.get('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
 
 
-# ==================================
-# LOGGING
-# ==================================
-# Streams all errors — including full 500 tracebacks — to stdout so they
-# appear in Render's live log feed without needing DEBUG=True.
-# django.request at ERROR level is the key logger: it prints the full
-# Python traceback for every unhandled exception in a view.
-# ==================================
+# Disable symlinks — use real copies of files instead (required on Windows
+# unless Developer Mode / symlink privilege is enabled)
+os.environ.setdefault('HUGGINGFACE_HUB_SYMLINKS_MODE', 'copy')
+os.environ.setdefault('HF_HUB_DISABLE_SYMLINKS_WARNING', '1')
 
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
+SNAPSHOT_HASH = 'e8c3b32edf5434bc2275fc9bab85f82640a19130'
 
-    'formatters': {
-        # Used in production — includes timestamp, level, module, and message
-        'verbose': {
-            'format': (
-                '\n[{levelname}] {asctime} | {module} | pid:{process} tid:{thread}\n'
-                '{message}\n'
-                '─────────────────────────────────────────────────────────\n'
-            ),
-            'style': '{',
-            'datefmt': '%Y-%m-%d %H:%M:%S',
-        },
-        # Used locally — shorter, easier to scan in the terminal
-        'simple': {
-            'format': '[{levelname}] {asctime} {module}: {message}',
-            'style': '{',
-            'datefmt': '%H:%M:%S',
-        },
-    },
+os.environ.setdefault('HF_TOKEN',           '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')
+os.environ.setdefault('TRANSFORMERS_CACHE', os.path.join(os.path.expanduser('~'), '.hf_cache'))
+os.environ.setdefault('HF_HOME',            os.path.join(os.path.expanduser('~'), '.hf_cache'))
+os.environ.setdefault('SENTENCE_TRANSFORMERS_HOME', os.path.join(os.path.expanduser('~'), '.hf_cache'))
+os.environ.setdefault(
+    'TEXT_ENCODER_MODEL_PATH',
+    os.path.join(
+        os.path.expanduser('~'),
+        '.hf_cache', 'hub',
+        'models--sentence-transformers--all-mpnet-base-v2',
+        'snapshots',
+        SNAPSHOT_HASH,
+    )
+)
 
-    'handlers': {
-        # All output goes to stdout — Render, Railway, Heroku, and every
-        # major PaaS captures stdout as the log stream.
-        'console': {
-            'class': 'logging.StreamHandler',
-            'formatter': 'simple' if DEBUG else 'verbose',
-        },
-    },
-
-    'root': {
-        # Catch-all: anything not handled by a named logger below
-        'handlers': ['console'],
-        'level': 'WARNING',
-    },
-
-    'loggers': {
-        # ── Django internals ──────────────────────────────────────────────
-        'django': {
-            'handlers': ['console'],
-            # INFO shows startup messages (migrations run, server start).
-            # In production we keep INFO so deploys are easy to follow.
-            'level': 'DEBUG' if DEBUG else 'INFO',
-            'propagate': False,
-        },
-
-        # ── THE MOST IMPORTANT ONE ────────────────────────────────────────
-        # django.request logs every HTTP request that results in a 4xx/5xx.
-        # At ERROR level it includes the full Python traceback — this is
-        # exactly what you need to diagnose your 500 on /profile/worker/edit/
-        'django.request': {
-            'handlers': ['console'],
-            'level': 'ERROR',
-            'propagate': False,
-        },
-
-        # ── Security warnings (CSRF failures, suspicious requests, etc.) ──
-        'django.security': {
-            'handlers': ['console'],
-            'level': 'ERROR',
-            'propagate': False,
-        },
-
-        # ── Database queries (very verbose — only enable when hunting a
-        #    slow query; leave at WARNING in normal operation) ──────────────
-        'django.db.backends': {
-            'handlers': ['console'],
-            'level': 'WARNING',
-            'propagate': False,
-        },
-
-        # ── Your app — jobs (AI matching, signals, tasks) ─────────────────
-        # DEBUG locally so you see every log.debug() call in your views.
-        # INFO in production so important events still appear in Render logs.
-        'jobs': {
-            'handlers': ['console'],
-            'level': 'DEBUG' if DEBUG else 'INFO',
-            'propagate': False,
-        },
-
-        # ── Your app — users ──────────────────────────────────────────────
-        'users': {
-            'handlers': ['console'],
-            'level': 'DEBUG' if DEBUG else 'INFO',
-            'propagate': False,
-        },
-
-        # ── Your app — core ───────────────────────────────────────────────
-        'core': {
-            'handlers': ['console'],
-            'level': 'DEBUG' if DEBUG else 'INFO',
-            'propagate': False,
-        },
-
-        # ── Celery — task execution, retries, failures ────────────────────
-        'celery': {
-            'handlers': ['console'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        'celery.task': {
-            'handlers': ['console'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-        'celery.worker': {
-            'handlers': ['console'],
-            'level': 'WARNING',
-            'propagate': False,
-        },
-
-        # ── django-allauth ────────────────────────────────────────────────
-        'allauth': {
-            'handlers': ['console'],
-            'level': 'WARNING',
-            'propagate': False,
-        },
-    },
-}
-
-
-# ==================================
-# MISC
-# ==================================
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
