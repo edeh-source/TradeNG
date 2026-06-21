@@ -349,6 +349,18 @@
   .save-btn.saved { color: var(--amber); border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.06); }
   .save-btn i { font-size: 0.88rem; }
 
+  /* ── Message Seller button ── */
+  .btn-chat {
+    background: rgba(14,165,233,0.07);
+    border: 1px solid rgba(14,165,233,0.22);
+    color: #7DD3FC;
+  }
+  .btn-chat:hover {
+    background: rgba(14,165,233,0.13);
+    border-color: rgba(14,165,233,0.38);
+    color: #BAE6FD;
+  }
+
   /* ═══════════════════════════════════════════════
      SELLER VIEW — pending offers table
   ═══════════════════════════════════════════════ */
@@ -698,6 +710,9 @@
             <span class="pd-price">₦{{ product.price|floatformat:0 }}</span>
           </div>
 
+          {# Engine 4: Price badge #}
+          {% include "marketplace/includes/_price_badge.html" %}
+
           {% if product.offers_allowed %}
           <p class="pd-offers-ok"><i class="fas fa-handshake"></i> Offers welcome</p>
           {% else %}
@@ -763,6 +778,15 @@
               <a href="{% url 'mktplace:order_detail' pk=active_order.pk %}" class="btn btn-ghost">
                 <i class="fas fa-box"></i> View Order
               </a>
+              <!-- Message Seller — active order -->
+              <form method="post" action="{% url 'chats:start_conversation' %}">
+                {% csrf_token %}
+                <input type="hidden" name="seller_user_id" value="{{ product.seller.user.pk }}">
+                <input type="hidden" name="product_id"     value="{{ product.pk }}">
+                <button type="submit" class="btn btn-chat" style="width:100%;">
+                  <i class="fas fa-comment-dots"></i> Message Seller
+                </button>
+              </form>
 
             {% else %}
               <!-- Buy Now -->
@@ -770,6 +794,16 @@
                 {% csrf_token %}
                 <button type="submit" class="btn btn-primary btn-lg" style="width:100%;">
                   <i class="fas fa-bolt"></i> Buy Now — ₦{{ product.price|floatformat:0 }}
+                </button>
+              </form>
+
+              <!-- Message Seller -->
+              <form method="post" action="{% url 'chats:start_conversation' %}">
+                {% csrf_token %}
+                <input type="hidden" name="seller_user_id" value="{{ product.seller.user.pk }}">
+                <input type="hidden" name="product_id"     value="{{ product.pk }}">
+                <button type="submit" class="btn btn-chat" style="width:100%;">
+                  <i class="fas fa-comment-dots"></i> Message Seller
                 </button>
               </form>
 
@@ -929,6 +963,12 @@
 
       </aside>{# /pd-panel #}
     </div>{# /pd-grid #}
+
+    {# Engine 1: Similar Items #}
+    {% include "marketplace/includes/_similar_products.html" %}
+
+    {# Engine 5: Cross-Sell #}
+    {% include "marketplace/includes/_cross_sell.html" %}
 
     <!-- ═══════════════════════════════════════════════
          SELLER — PENDING OFFERS TABLE

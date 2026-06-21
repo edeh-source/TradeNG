@@ -5,7 +5,7 @@ Django settings for technicians project.
 from pathlib import Path
 import os
 import dj_database_url
-
+from celery.schedules import crontab
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -25,8 +25,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 SECRET_KEY = os.environ.get('SECRET_KEY')
-
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
+
+if DEBUG:
+    ALLOWED_HOSTS = ["127.0.0.1", "localhost", "192.168.43.77"]
+else:
+    ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',') if os.environ.get('ALLOWED_HOSTS') else ["*"]
 
 ALLOWED_HOSTS = ["*"]
 
@@ -36,6 +40,7 @@ ALLOWED_HOSTS = ["*"]
 # ==================================
 
 INSTALLED_APPS = [
+    'daphne',
     "jazzmin",
     "django.contrib.admin",
     "django.contrib.auth",
@@ -57,7 +62,12 @@ INSTALLED_APPS = [
     'allauth.socialaccount.providers.google',
     'allauth.socialaccount.providers.facebook',
     'marketplace.apps.MarketplaceConfig',
+    'chats.apps.ChatsConfig',
+    
 ]
+
+
+ASGI_APPLICATION = 'technicians.asgi.application'
 
 if not DEBUG:
     INSTALLED_APPS.extend([
@@ -158,6 +168,16 @@ else:
             ssl_require=True,
         )
     }
+
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [('127.0.0.1', 6379)],
+        },
+    }
+}
 
 
 # ==================================
@@ -308,22 +328,31 @@ AUTH_USER_MODEL = "users.User"
 # CELERY
 # ==================================
 
-CELERY_BROKER_URL        = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
-CELERY_RESULT_BACKEND    = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
-CELERY_ACCEPT_CONTENT    = ['json']
-CELERY_TASK_SERIALIZER   = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE          = 'Africa/Lagos'
+if DEBUG:
+    CELERY_BROKER_URL     = 'redis://localhost:6379/0'
+    CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+else:
+    REDIS_URL = os.environ.get('REDIS_URL')
+    if not REDIS_URL:
+        raise ValueError("REDIS_URL environment variable is not set!")
+    CELERY_BROKER_URL     = REDIS_URL
+    CELERY_RESULT_BACKEND = REDIS_URL
+    # Only apply SSL params in prod where the Redis URL uses rediss://
+    CELERY_REDIS_BACKEND_USE_SSL = {
+        'ssl_cert_reqs': None,
+    }
+    CELERY_BROKER_USE_SSL = {
+        'ssl_cert_reqs': None,
+    }
+
+CELERY_ACCEPT_CONTENT     = ['json']
+CELERY_TASK_SERIALIZER    = 'json'
+CELERY_RESULT_SERIALIZER  = 'json'
+CELERY_TIMEZONE           = 'Africa/Lagos'
 CELERY_TASK_TRACK_STARTED = True
 
 CELERY_BROKER_TRANSPORT_OPTIONS = {
     'visibility_timeout': 3600,
-}
-CELERY_REDIS_BACKEND_USE_SSL = {
-    'ssl_cert_reqs': None,
-}
-CELERY_BROKER_USE_SSL = {
-    'ssl_cert_reqs': None,
 }
 
 # ==================================
@@ -372,5 +401,31 @@ os.environ.setdefault(
     )
 )
 
+
+
+
+
+CELERY_BEAT_SCHEDULE = {
+    # ... existing tasks ...
+
+    # Delete unlinked (orphan) chat image uploads older than 24 h
+    'cleanup-orphan-chat-attachments': {
+        'task':     'chats.tasks.cleanup_orphan_attachments_task',
+        'schedule': crontab(hour=3, minute=30),
+    },
+    # Fix stuck "online" status for users who disconnected abnormally
+    'reset-stale-chat-online-status': {
+        'task':     'chats.tasks.reset_stale_online_status_task',
+        'schedule': crontab(minute='*/10'),
+    },
+     'compute-trending-hourly': {
+        'task': 'marketplace.tasks.compute_trending_task',
+        'schedule': crontab(minute=0),
+    },
+      'recompute-personalised-feeds-nightly': {
+        'task': 'marketplace.tasks.recompute_all_personalised_feeds_task',
+        'schedule': crontab(hour=1, minute=30),
+    },
+}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

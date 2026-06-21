@@ -385,6 +385,9 @@
 
     <div class="nav-actions">
       {% if user.is_authenticated %}
+        <a href="{% url 'chats:conversation_list' %}" class="btn btn-ghost" title="Messages">
+          <i class="fas fa-comment-dots"></i> Messages
+        </a>
         <span class="nav-username">Hi, {{ user.username }}</span>
         <form method="post" action="{% url 'signout' %}" class="signout-form">
           {% csrf_token %}
@@ -412,6 +415,9 @@
     <a href="">Resources</a>
     <div class="m-actions">
       {% if user.is_authenticated %}
+        <a href="{% url 'chats:conversation_list' %}" class="btn btn-ghost">
+          <i class="fas fa-comment-dots"></i> Messages
+        </a>
         <form method="post" action="{% url 'signout' %}" class="signout-form">
           {% csrf_token %}
           <button type="submit" class="btn btn-ghost">

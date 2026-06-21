@@ -538,7 +538,7 @@
           </thead>
           <tbody>
             {% for order in orders %}
-            {% with cover=order.product.images.all|first %}
+            {% with cover=order.product.images.all|first conv=order.conversations.first %}
             <tr class="{% if order.status == 'paid' or order.status == 'confirmed' %}needs-action-row{% endif %}">
 
               <!-- Order ID + product -->
@@ -637,16 +637,25 @@
 
               <!-- Action -->
               <td>
-                <a href="{% url 'mktplace:order_detail' pk=order.pk %}"
-                   class="row-btn {% if order.status == 'paid' or order.status == 'confirmed' %}primary{% endif %}">
-                  <i class="fas fa-eye"></i>
-                  <span class="btn-label">
-                    {% if order.status == 'paid' %}Arrange meetup
-                    {% elif order.status == 'confirmed' %}View payout
-                    {% elif order.status == 'disputed' %}View dispute
-                    {% else %}View{% endif %}
-                  </span>
-                </a>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                  <a href="{% url 'mktplace:order_detail' pk=order.pk %}"
+                     class="row-btn {% if order.status == 'paid' or order.status == 'confirmed' %}primary{% endif %}">
+                    <i class="fas fa-eye"></i>
+                    <span class="btn-label">
+                      {% if order.status == 'paid' %}Arrange meetup
+                      {% elif order.status == 'confirmed' %}View payout
+                      {% elif order.status == 'disputed' %}View dispute
+                      {% else %}View{% endif %}
+                    </span>
+                  </a>
+                  {% if conv %}
+                  <a href="{% url 'chats:conversation_detail' pk=conv.pk %}"
+                     class="row-btn" title="Message buyer">
+                    <i class="fas fa-comment-dots"></i>
+                    <span class="btn-label">Message</span>
+                  </a>
+                  {% endif %}
+                </div>
               </td>
 
             </tr>
