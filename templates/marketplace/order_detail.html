@@ -342,6 +342,11 @@
     color: #FCA5A5;
   }
   .od-action-btn.danger:hover { background: rgba(239,68,68,0.14); }
+  .od-action-btn.sky {
+    background: rgba(56,189,248,0.10); border: 1px solid rgba(56,189,248,0.25);
+    color: var(--sky);
+  }
+  .od-action-btn.sky:hover { background: rgba(56,189,248,0.18); }
 
   /* Confirm receipt warning box */
   .confirm-warning {
@@ -1049,6 +1054,15 @@
             </div>
           </div>
           <div class="od-card-body">
+            {% with conv=order.conversations.first %}
+            {% if conv %}
+            <a href="{% url 'chats:conversation_detail' pk=conv.pk %}"
+               class="od-action-btn sky" style="margin-bottom:14px;">
+              <i class="fas fa-comment-dots"></i>
+              Message {% if is_buyer %}Seller{% else %}Buyer{% endif %}
+            </a>
+            {% endif %}
+            {% endwith %}
             <!-- Buyer -->
             <div class="person-row">
               <div class="person-avatar">

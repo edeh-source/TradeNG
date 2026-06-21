@@ -587,6 +587,11 @@
       </div>
 
       <!-- Product grid -->
+      {# Engine 2: Personalised feed & Engine 3: Trending #}
+      {% if not q %}
+        {% include "marketplace/includes/_personalised_feed.html" %}
+        {% include "marketplace/includes/_trending.html" %}
+      {% endif %}
       <div class="product-grid">
         {% for product in products %}
         {% with cover=product.images.all|first %}

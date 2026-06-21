@@ -27,6 +27,7 @@ urlpatterns = [
     path("", include("users.urls")),
     path("", include("jobs.urls")),
     path('marketplace/', include('marketplace.urls', namespace='mktplace')),
+    path('chats/', include('chats.urls', namespace='chats')),
 ]
 
 if settings.DEBUG:
