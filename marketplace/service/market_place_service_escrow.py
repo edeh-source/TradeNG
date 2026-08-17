@@ -34,6 +34,7 @@ def _headers():
     return {
         'Authorization': f'Bearer {settings.PAYSTACK_SECRET_KEY}',
         'Content-Type':  'application/json',
+
     }
 
 
@@ -193,7 +194,7 @@ def confirm_order_receipt(order_id: str) -> bool:
     now = timezone.now()
     order.status           = Order.Status.CONFIRMED
     order.confirmed_at     = now
-    order.auto_complete_at = now + timedelta(days=7)
+    order.auto_complete_at = now + timedelta(minutes=3)
     order.save(update_fields=['status', 'confirmed_at', 'auto_complete_at'])
 
     # Queue payout — seller gets money once buyer confirms
@@ -309,64 +310,4 @@ def release_order_to_seller(order_id: str) -> bool:
         order.seller_payout_amount, order.seller_id, order_id,
     )
     return True
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-#  PRODUCT SEARCH SERVICE (semantic)
-# ──────────────────────────────────────────────────────────────────────────────
-
-def semantic_product_search(query: str, product_pks=None):
-    """
-    Encode `query` with the sentence-transformer and return a ranked list
-    of (product_pk, score) tuples.
-
-    Reuses the SAME text_encoder singleton as the jobs search —
-    no extra memory, no second model load.
-
-    Args:
-        query:       The buyer's search string.
-        product_pks: Optional list of PKs to restrict search to.
-
-    Returns:
-        List of (pk, score) tuples sorted by score descending, or None
-        if semantic search is unavailable (fall back to icontains).
-    """
-    from marketplace.models import Product
-    from jobs.service.text_encoder import text_encoder
-
-    if not query or len(query.strip()) < 2:
-        return None
-
-    try:
-        query_vec = text_encoder.encode(query.strip())
-
-        qs = Product.objects.filter(
-            status=Product.Status.ACTIVE,
-            text_embedding__isnull=False,
-        ).values('pk', 'text_embedding')
-
-        if product_pks is not None:
-            qs = qs.filter(pk__in=product_pks)
-
-        rows = list(qs)
-        if not rows:
-            return None
-
-        pks        = [r['pk'] for r in rows]
-        embeddings = [r['text_embedding'] for r in rows]
-
-        scores = text_encoder.batch_cosine_similarity(query_vec, embeddings)
-
-        ranked = sorted(
-            [(pk, score) for pk, score in zip(pks, scores) if score >= 0.15],
-            key=lambda x: x[1],
-            reverse=True,
-        )
-        return ranked
-
-    except Exception as exc:
-        logger.warning(
-            "semantic_product_search failed for query %r — falling back. Error: %s",
-            query, exc,
-        )
-        return None
+

@@ -74,11 +74,24 @@ def semantic_job_search(
         return None
 
     try:
+        from jobs.tasks import encode_search_query_task
         from jobs.service.text_encoder import text_encoder
         from jobs.models import Job
 
-        # Encode the user query
-        query_vec = text_encoder.encode(query.strip())
+        # Offload encoding to the Celery worker via RPC.
+        # This completely prevents PyTorch from loading in the web server process,
+        # avoiding the Windows ASGI crash. If Celery is down, it falls back after 5s.
+        try:
+            query_vec_list = encode_search_query_task.apply_async(
+                args=[query.strip()], 
+                expires=5.0
+            ).get(timeout=5.0)
+            query_vec = np.array(query_vec_list, dtype=np.float32)
+        except Exception as exc:
+            logger.warning(
+                "semantic_job_search: Celery RPC failed/timed out (%s) — using keyword fallback.", exc
+            )
+            return None
 
         # Fetch jobs with embeddings
         qs = Job.objects.filter(
@@ -104,7 +117,7 @@ def semantic_job_search(
             [(pk, score) for pk, score in zip(pks, scores) if score >= MIN_SCORE_THRESHOLD],
             key=lambda x: x[1],
             reverse=True,
-        )
+        )[:50]
 
         logger.debug(
             "semantic_job_search: query=%r → %d results (from %d candidates)",

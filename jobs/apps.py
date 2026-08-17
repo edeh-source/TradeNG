@@ -1,5 +1,6 @@
 from django.apps import AppConfig
 
+
 class JobsConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name               = 'jobs'
@@ -8,20 +9,17 @@ class JobsConfig(AppConfig):
     def ready(self):
         import jobs.signals  # noqa: F401
 
-        # Load the sentence-transformer eagerly at startup so the first search
-        # request is fast and no online network call can sneak in.
-        # We intentionally do NOT guard on RUN_MAIN here — that env var is only
-        # set by Django's dev-server reloader and is never present under Gunicorn,
-        # Uvicorn, or Celery, which meant the model was never pre-loaded in
-        # production and fell back to a lazy (online) load on the first request.
-        self._load_model_sync()
-
-    @staticmethod
-    def _load_model_sync():
-        try:
-            from jobs.service.text_encoder import text_encoder
-            print("[TradeLink] Loading sentence-transformer (sync)...")
-            text_encoder._ensure_loaded()
-            print("[TradeLink] ✓ Model ready.")
-        except Exception as e:
-            print(f"[TradeLink] ✗ Failed: {e}")
+        # NOTE: We do NOT pre-load the sentence-transformer model here.
+        #
+        # Rationale:
+        #   • The TextEncoder singleton (jobs/service/text_encoder.py) already
+        #     implements thread-safe lazy loading — it loads the model on the
+        #     first encode() call, not at import time.
+        #   • Pre-loading in ready() interferes with Daphne's (ASGI) async
+        #     event loop because heavy CPU/IO work blocks the GIL and can cause
+        #     the server process to become unresponsive and exit.
+        #   • The local HuggingFace snapshot is already on disk, so the first
+        #     encode() call typically takes < 2 seconds — acceptable for a
+        #     one-time warm-up on the very first search request.
+        #   • Celery workers load the model independently as needed; no
+        #     co-ordination with the web server process is required.

@@ -26,11 +26,17 @@ from .models import (
 # ──────────────────────────────────────────────────────────────────────────────
 
 class WorkerProfileForm(forms.ModelForm):
+    skills = forms.ModelMultipleChoiceField(
+        queryset=Skill.objects.none(),
+        widget=forms.CheckboxSelectMultiple(attrs={'class': 'we-skill-check-input'}),
+        required=False,
+    )
+
     class Meta:
         model  = WorkerProfile
         fields = [
             'trade_category', 'experience_level', 'years_experience',
-            'bio', 'state', 'lga', 'is_willing_to_relocate',
+            'skills', 'bio', 'state', 'lga', 'is_willing_to_relocate',
             'hourly_rate', 'daily_rate', 'availability',
         ]
         widgets = {
@@ -38,6 +44,43 @@ class WorkerProfileForm(forms.ModelForm):
                 'placeholder': 'Describe your skills, experience, and the kind of work you do…'}),
             'lga': forms.TextInput(attrs={'placeholder': 'e.g. Ikeja'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk:
+            self.fields['skills'].initial = self.instance.skills.all()
+
+        if 'trade_category' in self.data:
+            try:
+                trade_id = self.data.get('trade_category')
+                self.fields['skills'].queryset = Skill.objects.filter(category_id=trade_id, is_active=True)
+            except (ValueError, TypeError):
+                self.fields['skills'].queryset = Skill.objects.none()
+        elif self.instance.pk and self.instance.trade_category:
+            self.fields['skills'].queryset = Skill.objects.filter(category=self.instance.trade_category, is_active=True)
+        else:
+            self.fields['skills'].queryset = Skill.objects.none()
+
+    def save(self, commit=True):
+        profile = super().save(commit=commit)
+        if commit:
+            self.save_skills(profile)
+        return profile
+
+    def save_skills(self, profile):
+        selected_skills = self.cleaned_data.get('skills', [])
+        from .models import WorkerSkill
+        
+        existing_skills = WorkerSkill.objects.filter(worker=profile)
+        existing_skill_ids = list(existing_skills.values_list('skill_id', flat=True))
+        
+        selected_ids = [s.id for s in selected_skills]
+        
+        for skill in selected_skills:
+            if skill.id not in existing_skill_ids:
+                WorkerSkill.objects.create(worker=profile, skill=skill)
+                
+        WorkerSkill.objects.filter(worker=profile).exclude(skill_id__in=selected_ids).delete()
 
 
 class PortfolioItemForm(forms.ModelForm):

@@ -329,6 +329,10 @@ class WorkerProfile(models.Model):
 
     class Meta:
         ordering = ['-is_featured', '-profile_completion', '-created']
+        indexes  = [
+            models.Index(fields=['trade_category', 'availability']),
+            models.Index(fields=['state']),
+        ]
 
     def __str__(self):
         return f'Worker: {self.user.username} ({self.trade_category})'
@@ -788,6 +792,10 @@ class JobApplication(models.Model):
     class Meta:
         unique_together = ('job', 'worker')
         ordering        = ['-applied_at']
+        indexes         = [
+            models.Index(fields=['job', 'status']),
+            models.Index(fields=['worker', 'status']),
+        ]
 
     def __str__(self):
         return f'{self.worker.user.username} → {self.job.title} [{self.status}]'
@@ -862,6 +870,10 @@ class Review(models.Model):
         # One review per reviewer per job per direction
         unique_together = ('job', 'reviewer', 'review_type')
         ordering        = ['-created_at']
+        indexes         = [
+            models.Index(fields=['reviewee', 'is_visible', 'review_type']),
+            models.Index(fields=['job']),
+        ]
 
     def __str__(self):
         return (
@@ -904,14 +916,65 @@ class Notification(models.Model):
     data       = models.JSONField(default=dict, blank=True)
 
     is_read    = models.BooleanField(default=False)
+    # Soft-delete: hidden from the user's dashboard but kept for admin records
+    is_deleted = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['-created_at']
-        indexes  = [models.Index(fields=['user', 'is_read', '-created_at'])]
+        indexes  = [
+            models.Index(fields=['user', 'is_read', 'is_deleted']),
+            models.Index(fields=['user', 'is_deleted', '-created_at']),
+        ]
 
     def __str__(self):
         return f'[{self.notif_type}] → {self.user.username}: {self.title}'
+
+    def get_absolute_url(self):
+        """
+        Returns the most meaningful URL for this notification so users can
+        navigate directly to the related object when they click a notification.
+        """
+        from django.urls import reverse
+
+        nt   = self.notif_type
+        data = self.data or {}
+
+        job_id         = data.get('job_id')
+        application_id = data.get('application_id')
+        contract_id    = data.get('contract_id')
+
+        if nt == self.NotifType.NEW_MATCH and job_id:
+            return reverse('marketplace:job_detail', kwargs={'pk': job_id})
+
+        if nt == self.NotifType.NEW_APPLICATION and job_id:
+            return reverse('marketplace:job_applications', kwargs={'pk': job_id})
+
+        if nt == self.NotifType.APPLICATION_UPDATE:
+            return reverse('marketplace:worker_applications')
+
+        if nt == self.NotifType.NEW_REVIEW and job_id:
+            return reverse('marketplace:job_detail', kwargs={'pk': job_id})
+
+        if nt in (
+            self.NotifType.JOB_EXPIRING,
+        ) and job_id:
+            return reverse('marketplace:job_detail', kwargs={'pk': job_id})
+
+        if nt == self.NotifType.PROFILE_TIP:
+            return reverse('marketplace:worker_profile_edit')
+
+        if nt in (
+            self.NotifType.ESCROW_FUNDED,
+            self.NotifType.ESCROW_SUBMITTED,
+            self.NotifType.ESCROW_APPROVED,
+            self.NotifType.ESCROW_RELEASED,
+            self.NotifType.ESCROW_DISPUTE,
+        ) and contract_id:
+            return reverse('marketplace:contract_detail', kwargs={'pk': contract_id})
+
+        # Fallback: notifications list
+        return reverse('marketplace:notifications')
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -985,13 +1048,14 @@ class Milestone(models.Model):
     """
 
     class Status(models.TextChoices):
-        UNFUNDED   = 'unfunded',   'Unfunded'
-        FUNDED     = 'funded',     'Funded (In Escrow)'
-        IN_REVIEW  = 'in_review',  'In Review'
-        APPROVED   = 'approved',   'Approved'
-        RELEASED   = 'released',   'Released'
-        DISPUTED   = 'disputed',   'Disputed'
-        REFUNDED   = 'refunded',   'Refunded'
+        UNFUNDED     = 'unfunded',     'Unfunded'
+        FUNDED       = 'funded',       'Funded (In Escrow)'
+        IN_REVIEW    = 'in_review',    'In Review'
+        APPROVED     = 'approved',     'Approved'
+        PENDING_OTP  = 'pending_otp',  'Pending OTP (Transfer Awaiting Confirmation)'
+        RELEASED     = 'released',     'Released'
+        DISPUTED     = 'disputed',     'Disputed'
+        REFUNDED     = 'refunded',     'Refunded'
 
     id                   = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     contract             = models.ForeignKey(

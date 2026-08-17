@@ -608,14 +608,25 @@
             </form>
           </div>
 
-          <a
-            href="{% url 'marketplace:worker_profile_public' pk=app.worker.pk %}"
-            class="ja-btn-view"
-            target="_blank"
-            rel="noopener"
-          >
-            <i class="fas fa-arrow-up-right-from-square"></i> Full Profile
-          </a>
+          <div style="display:flex; gap:8px;">
+            {% if app.status == 'accepted' %}
+            <a
+              href="{% url 'marketplace:review_submit' pk=app.job.pk %}"
+              class="ja-btn-view"
+              style="background:rgba(245,158,11,0.1); color:var(--amber); border-color:rgba(245,158,11,0.2);"
+            >
+              <i class="fas fa-star"></i> Leave a Review
+            </a>
+            {% endif %}
+            <a
+              href="{% url 'marketplace:worker_profile_public' pk=app.worker.pk %}"
+              class="ja-btn-view"
+              target="_blank"
+              rel="noopener"
+            >
+              <i class="fas fa-arrow-up-right-from-square"></i> Full Profile
+            </a>
+          </div>
         </div>
         {% else %}
         {# Withdrawn — show read-only strip #}

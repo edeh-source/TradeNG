@@ -69,6 +69,8 @@ from .views import (
     NotificationListView,
     MarkNotificationReadView,
     MarkAllNotificationsReadView,
+    DeleteNotificationView,
+    GetCategorySkillsView,
 )
 
 from .views_escrow import (
@@ -80,8 +82,8 @@ from .views_escrow import (
     MilestoneSubmitWorkView,
     MilestoneApproveView,
     MilestoneDisputeView,
-    WorkerBankAccountView,
     DisputeAdminResolveView,
+    MilestoneFinalizeOtpView,
 )
 
 from .views_webhook import PaystackWebhookView
@@ -89,6 +91,13 @@ from .views_webhook import PaystackWebhookView
 app_name = 'marketplace'
 
 urlpatterns = [
+
+    # ── API ─────────────────────────────────────────────────────────────────
+    path(
+        'api/skills/',
+        GetCategorySkillsView.as_view(),
+        name='api_skills',
+    ),
 
     # ── Trade Categories ────────────────────────────────────────────────────
     path(
@@ -256,6 +265,11 @@ urlpatterns = [
         MarkAllNotificationsReadView.as_view(),
         name='notifications_read_all',
     ),
+    path(
+        'notifications/<uuid:pk>/delete/',
+        DeleteNotificationView.as_view(),
+        name='notification_delete',
+    ),
 
     # ── Escrow / Milestones ───────────────────────────────────────────────────
     path(
@@ -293,11 +307,13 @@ urlpatterns = [
         MilestoneDisputeView.as_view(),
         name='milestone_dispute',
     ),
+
     path(
-        'escrow/bank-account/',
-        WorkerBankAccountView.as_view(),
-        name='bank_account',
+        'escrow/milestones/<uuid:pk>/finalize-otp/',
+        MilestoneFinalizeOtpView.as_view(),
+        name='milestone_finalize_otp',
     ),
+
     path(
         'escrow/disputes/<uuid:pk>/resolve/',
         DisputeAdminResolveView.as_view(),

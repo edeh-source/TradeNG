@@ -7,20 +7,322 @@
 <!-- ── Libraries: CSS ── -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css"/>
 <link rel="stylesheet" href="https://unpkg.com/aos@2.3.4/dist/aos.css"/>
+<!-- Typed.js —— hero typewriter effect -->
+<script src="https://cdn.jsdelivr.net/npm/typed.js@2.1.0/dist/typed.umd.js"></script>
 
 <style>
   /* =====================================================
      INDEX PAGE — TradeLink NG Homepage
-     ENHANCED: GSAP · Three.js · Swiper · AOS · Unsplash
+     ENHANCED: GSAP · Three.js · Swiper · AOS · Typed.js
+     3D TIER: Tilt cards · Glow rings · Floating icons
   ===================================================== */
+
+  /* ── Import Google Font for extra flair ── */
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,700;0,900;1,700;1,900&family=Outfit:wght@400;500;600;700;800&display=swap');
+
+  /* ===== 3D HERO EXTRAS ===== */
+
+  /* Typed cursor */
+  .typed-cursor {
+    color: var(--amber);
+    font-weight: 300;
+    font-size: inherit;
+    animation: typedBlink 0.7s step-start infinite;
+  }
+  @keyframes typedBlink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0; }
+  }
+
+  /* Hero h1 typed wrapper */
+  #heroTypedLine {
+    display: block;
+    min-height: 1.1em;
+  }
+  .hero h1 .typed-line-wrap {
+    display: block;
+  }
+
+  /* Neon glow on h1 em */
+  .hero h1 em {
+    position: relative;
+    display: inline-block;
+  }
+  .hero h1 em::after {
+    content: attr(data-text);
+    position: absolute;
+    inset: 0;
+    color: var(--amber);
+    filter: blur(18px);
+    opacity: 0.4;
+    z-index: -1;
+    pointer-events: none;
+    animation: glowPulse 3s ease-in-out infinite;
+  }
+  @keyframes glowPulse {
+    0%, 100% { opacity: 0.3; filter: blur(16px); }
+    50%       { opacity: 0.6; filter: blur(24px); }
+  }
+
+  /* Floating 3D tool icons ring */
+  .hero-tool-ring {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    overflow: hidden;
+  }
+  .tool-float {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 14px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    background: rgba(245,158,11,0.07);
+    border: 1px solid rgba(245,158,11,0.18);
+    color: var(--amber);
+    font-size: 1.05rem;
+    box-shadow:
+      0 8px 32px rgba(0,0,0,0.35),
+      0 0 0 1px rgba(245,158,11,0.06),
+      inset 0 1px 0 rgba(255,255,255,0.05);
+    animation: floatOrbit var(--dur, 7s) ease-in-out infinite;
+    animation-delay: var(--delay, 0s);
+    opacity: 0;
+    transition: opacity 0.4s;
+  }
+  .tool-float.show { opacity: 1; }
+  @keyframes floatOrbit {
+    0%   { transform: translateY(0)    rotate(0deg)   scale(1); }
+    30%  { transform: translateY(-14px) rotate(4deg)  scale(1.04); }
+    65%  { transform: translateY(8px)  rotate(-3deg) scale(0.97); }
+    100% { transform: translateY(0)    rotate(0deg)   scale(1); }
+  }
+
+  /* Shimmer gradient sweep on section headings */
+  .shimmer-text {
+    background: linear-gradient(
+      90deg,
+      var(--amber) 0%,
+      #FBBF24 30%,
+      #FDE68A 50%,
+      #FBBF24 70%,
+      var(--orange) 100%
+    );
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: shimmer 4s linear infinite;
+  }
+  @keyframes shimmer {
+    0%   { background-position: 0%   center; }
+    100% { background-position: 200% center; }
+  }
+
+  /* ===== 3D TILT CARDS ===== */
+  .tilt-card {
+    transform-style: preserve-3d;
+    transition: box-shadow 0.3s ease, transform 0.05s linear;
+    will-change: transform;
+  }
+  .tilt-card .card-3d-inner {
+    transform: translateZ(0);
+    transform-style: preserve-3d;
+  }
+  /* glare overlay */
+  .tilt-card .tilt-glare {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: radial-gradient(
+      circle at var(--gx, 50%) var(--gy, 50%),
+      rgba(255,255,255,0.12) 0%,
+      transparent 60%
+    );
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 5;
+  }
+  .tilt-card:hover .tilt-glare { opacity: 1; }
+
+  /* Depth shadow upgrade on hover for job & trade cards */
+  .trade-card.tilt-card:hover,
+  .job-card.tilt-card:hover {
+    box-shadow:
+      0 24px 64px rgba(0,0,0,0.55),
+      0 0 0 1px rgba(245,158,11,0.15),
+      var(--shadow-amber);
+  }
+  .step-card.tilt-card:hover {
+    box-shadow:
+      0 20px 50px rgba(0,0,0,0.45),
+      0 0 0 1px rgba(245,158,11,0.12);
+  }
+
+  /* ===== GLOWING ORB BACKGROUND ===== */
+  .hero-orb-bg {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+  }
+  .hero-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    animation: orbFloat var(--od, 8s) ease-in-out infinite;
+    animation-delay: var(--odel, 0s);
+  }
+  @keyframes orbFloat {
+    0%,100% { transform: translate(0,0) scale(1); }
+    33%      { transform: translate(var(--ox,20px), var(--oy,-20px)) scale(1.08); }
+    66%      { transform: translate(calc(var(--ox,20px) * -0.5), calc(var(--oy,-20px) * 0.7)) scale(0.95); }
+  }
+
+  /* ===== HERO BADGE PULSE RING ===== */
+  .hero-badge {
+    position: relative;
+    isolation: isolate;
+  }
+  .hero-badge::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: var(--r-pill);
+    background: linear-gradient(135deg, var(--amber), var(--orange));
+    z-index: -1;
+    opacity: 0;
+    animation: badgePulseRing 2.5s ease-in-out infinite;
+  }
+  @keyframes badgePulseRing {
+    0%, 100% { opacity: 0; transform: scale(1); }
+    50%       { opacity: 0.15; transform: scale(1.05); }
+  }
+
+  /* ===== TRUST BAR GLOW ===== */
+  .trust-num {
+    position: relative;
+  }
+  .trust-num::after {
+    content: '';
+    position: absolute;
+    bottom: -6px; left: 50%; transform: translateX(-50%);
+    width: 60%; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--amber), transparent);
+    border-radius: 2px;
+    opacity: 0.5;
+  }
+
+  /* ===== 3D STEP CONNECTOR ===== */
+  .steps-grid::before {
+    background: linear-gradient(90deg, transparent, rgba(245,158,11,0.4), transparent);
+    height: 2px;
+    animation: connectorPulse 3s ease-in-out infinite;
+  }
+  @keyframes connectorPulse {
+    0%, 100% { opacity: 0.4; }
+    50%       { opacity: 1; }
+  }
+
+  /* ===== NEON BORDER ON FOCUS SEARCH ===== */
+  .hero-search:focus-within {
+    border-color: var(--amber);
+    box-shadow:
+      0 8px 40px rgba(0,0,0,0.5),
+      0 0 0 3px rgba(245,158,11,0.12),
+      0 0 20px rgba(245,158,11,0.08);
+  }
+
+  /* ===== COUNTER ODOMETER EFFECT ===== */
+  .trust-num {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -1px;
+  }
 
   /* ===== HERO ===== */
   .hero {
-    padding-top:    calc(var(--nav-h) + clamp(36px, 6vw, 72px));
-    padding-bottom: clamp(56px, 8vw, 96px);
+    padding-top:    calc(var(--nav-h) + clamp(48px, 7vw, 96px));
+    padding-bottom: clamp(64px, 9vw, 112px);
     position: relative; z-index: 1;
-    text-align: center;
+    text-align: left;
     overflow: hidden;
+    /* Deep navy/dark premium background */
+    background: linear-gradient(160deg,
+      #080d1a 0%,
+      #0b1220 30%,
+      #0d0f18 60%,
+      #0a0c16 100%
+    );
+    min-height: clamp(520px, 80vh, 820px);
+    display: flex;
+    align-items: center;
+  }
+
+  /* ── NESTOVA-style perspective grid overlay ── */
+  .hero-grid-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    overflow: hidden;
+  }
+  /* Horizontal + Vertical grid lines via CSS background */
+  .hero-grid-overlay::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.038) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.038) 1px, transparent 1px);
+    background-size: clamp(48px,6vw,80px) clamp(48px,6vw,80px);
+    mask-image: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.7) 25%, rgba(0,0,0,0.5) 70%, transparent 100%);
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.7) 25%, rgba(0,0,0,0.5) 70%, transparent 100%);
+  }
+  /* Amber accent grid — sparse larger cells for depth */
+  .hero-grid-overlay::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(245,158,11,0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(245,158,11,0.045) 1px, transparent 1px);
+    background-size: clamp(144px,18vw,240px) clamp(144px,18vw,240px);
+    mask-image: linear-gradient(160deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 60%, transparent 100%);
+    -webkit-mask-image: linear-gradient(160deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 60%, transparent 100%);
+  }
+
+  /* Corner glow accent (bottom-right amber bloom) */
+  .hero-grid-corner-glow {
+    position: absolute;
+    bottom: -80px; right: -80px;
+    width: clamp(280px, 40vw, 560px);
+    height: clamp(280px, 40vw, 560px);
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(245,158,11,0.13) 0%, transparent 65%);
+    pointer-events: none;
+    z-index: 1;
+    animation: cornerGlowPulse 6s ease-in-out infinite;
+  }
+  @keyframes cornerGlowPulse {
+    0%, 100% { opacity: 0.7; transform: scale(1); }
+    50%       { opacity: 1;   transform: scale(1.08); }
+  }
+
+  /* Top-left blue-ish grid accent */
+  .hero-grid-accent-tl {
+    position: absolute;
+    top: -60px; left: -60px;
+    width: clamp(200px, 30vw, 400px);
+    height: clamp(200px, 30vw, 400px);
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(56,189,248,0.06) 0%, transparent 65%);
+    pointer-events: none;
+    z-index: 1;
   }
 
   /* ── Three.js canvas ── */
@@ -28,21 +330,52 @@
     position: absolute; inset: 0;
     width: 100%; height: 100%;
     pointer-events: none; z-index: 0;
-    opacity: 0.55;
+    opacity: 0.35;
   }
 
-  /* ── hero inner must sit above canvas ── */
-  .hero .container { position: relative; z-index: 2; }
+  /* ── hero inner must sit above canvas & grid ── */
+  .hero .container { position: relative; z-index: 3; }
+
+  /* Hero inner layout — two-column on desktop */
+  .hero-inner {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 48px;
+    align-items: center;
+  }
+  @media (min-width: 1024px) {
+    .hero-inner {
+      grid-template-columns: 1fr 0.85fr;
+      gap: 64px;
+      text-align: left;
+    }
+  }
+  .hero-content { width: 100%; }
+  .hero-visual {
+    display: none;
+  }
+  @media (min-width: 1024px) {
+    .hero-visual {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      align-items: flex-end;
+    }
+  }
 
   .hero-badge {
     display: inline-flex; align-items: center; gap: 8px;
-    padding: 6px 18px 6px 8px;
-    background: rgba(245,158,11,0.08);
-    border: 1px solid rgba(245,158,11,0.22);
+    padding: 6px 20px 6px 8px;
+    background: rgba(245,158,11,0.09);
+    border: 1px solid rgba(245,158,11,0.28);
     border-radius: var(--r-pill);
-    font-size: 0.82rem; font-weight: 600;
-    color: var(--amber); margin-bottom: 32px;
-    max-width: 100%; white-space: normal; text-align: center;
+    font-size: 0.78rem; font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--amber); margin-bottom: 28px;
+    max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
   }
   .hero-badge-dot {
     width: 8px; height: 8px; border-radius: 50%;
@@ -52,11 +385,12 @@
 
   .hero h1 {
     font-family: 'Fraunces', serif;
-    font-size: clamp(2.4rem, 8vw, 6rem);
-    font-weight: 900; line-height: 1.05;
-    letter-spacing: clamp(-1px, -0.5vw, -3px);
-    margin-bottom: 12px;
+    font-size: clamp(2.6rem, 7.5vw, 5.5rem);
+    font-weight: 900; line-height: 1.04;
+    letter-spacing: clamp(-1px, -0.4vw, -2.5px);
+    margin-bottom: 16px;
     word-break: break-word; overflow-wrap: break-word;
+    color: #fff;
   }
   .hero h1 em {
     font-style: italic; color: var(--amber);
@@ -65,10 +399,12 @@
   }
 
   .hero-sub {
-    font-size: clamp(0.93rem, 2vw, 1.2rem);
-    color: var(--text-2); max-width: 560px;
-    margin: 0 auto 48px; line-height: 1.75;
-    padding: 0 clamp(0px, 2vw, 16px);
+    font-size: clamp(0.93rem, 1.8vw, 1.1rem);
+    color: rgba(255,255,255,0.55); max-width: 520px;
+    margin: 0 0 44px; line-height: 1.8;
+  }
+  @media (max-width: 1023px) {
+    .hero-sub { margin: 0 auto 44px; text-align: center; }
   }
 
   /* ── Hero search + autocomplete wrapper ── */
@@ -167,19 +503,29 @@
   .ac-empty { padding: 20px 14px; font-size: 0.85rem; color: var(--text-3); text-align: center; }
 
   .hero-tags {
-    display: flex; align-items: center; justify-content: center;
+    display: flex; align-items: center; justify-content: flex-start;
     flex-wrap: wrap; gap: 8px;
-    max-width: 100%; padding: 0 clamp(0px, 2vw, 16px);
+    max-width: 100%;
     font-size: 0.82rem; color: var(--text-3);
   }
-  .hero-tags span { color: var(--text-3); }
-  .hero-tag {
-    padding: 4px 14px;
-    background: var(--surface-1); border: 1px solid var(--border-subtle);
-    border-radius: var(--r-pill); color: var(--text-2); font-size: 0.82rem;
-    cursor: pointer; transition: var(--t); text-decoration: none;
+  @media (max-width: 1023px) {
+    .hero-tags { justify-content: center; }
   }
-  .hero-tag:hover { background: var(--surface-2); border-color: var(--border-strong); color: var(--amber); }
+  .hero-tags span { color: rgba(255,255,255,0.35); font-size: 0.78rem; }
+  .hero-tag {
+    padding: 5px 16px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: var(--r-pill); color: rgba(255,255,255,0.55); font-size: 0.8rem;
+    cursor: pointer; transition: var(--t); text-decoration: none;
+    backdrop-filter: blur(4px);
+  }
+  .hero-tag:hover {
+    background: rgba(245,158,11,0.12);
+    border-color: rgba(245,158,11,0.35);
+    color: var(--amber);
+    transform: translateY(-1px);
+  }
 
   /* ── Floating worker cards (desktop deco) ── */
   .hero-workers {
@@ -219,11 +565,11 @@
   .hero-scroll {
     display: inline-flex; flex-direction: column; align-items: center;
     gap: 8px; margin-top: 52px; opacity: 0;
-    color: var(--text-3); font-size: 0.7rem; font-weight: 600;
+    color: rgba(255,255,255,0.3); font-size: 0.68rem; font-weight: 600;
     letter-spacing: 2px; text-transform: uppercase;
   }
   .hero-scroll-mouse {
-    width: 22px; height: 34px; border: 2px solid var(--border-strong);
+    width: 22px; height: 34px; border: 2px solid rgba(255,255,255,0.18);
     border-radius: 12px; position: relative;
   }
   .hero-scroll-mouse::after {
@@ -236,6 +582,13 @@
     0%   { opacity: 1; transform: translateX(-50%) translateY(0); }
     80%  { opacity: 0; transform: translateX(-50%) translateY(12px); }
     100% { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  }
+
+  /* ── Hero search left-aligned on desktop ── */
+  @media (min-width: 1024px) {
+    .hero-search-wrap { margin: 0 0 20px; }
+    .hero-tags        { margin: 0; }
+    .hero-scroll      { align-items: flex-start; }
   }
 
   /* Trust bar */
@@ -575,6 +928,11 @@
   @media (max-width: 1024px) {
     .trade-grid { grid-template-columns: repeat(2, 1fr); }
     .ai-inner { grid-template-columns: 1fr; gap: 48px; }
+    /* Hero: single column, centered on tablet */
+    .hero { text-align: center; }
+    .hero h1 { text-align: center; }
+    .hero-badge { margin-left: auto; margin-right: auto; }
+    .hero-inner { grid-template-columns: 1fr; }
   }
   @media (max-width: 768px) {
     .steps-grid { grid-template-columns: 1fr; }
@@ -610,6 +968,7 @@
     .job-meta { gap: 6px 10px; }
     .testi-card { padding: 24px 18px; }
     .step-card { padding: 28px 20px; }
+    .hero-badge { white-space: normal; text-align: center; }
   }
   @media (max-width: 380px) {
     .trade-grid { grid-template-columns: 1fr; }
@@ -621,6 +980,183 @@
   [data-aos="zoom-in"]  { transition-timing-function: cubic-bezier(0.2, 0, 0, 1); }
   [data-aos="fade-right"],
   [data-aos="fade-left"] { transition-timing-function: cubic-bezier(0.2, 0, 0, 1); }
+
+  /* ===== DEMO VIDEO SECTION ===== */
+  .demo-section {
+    padding: clamp(56px,8vw,96px) 0;
+    background: linear-gradient(180deg, var(--bg-raised) 0%, var(--bg-base) 100%);
+    border-top: 1px solid var(--border-subtle);
+    position: relative; z-index: 1; overflow: hidden;
+  }
+  .demo-section::before {
+    content: '';
+    position: absolute; width: 600px; height: 600px;
+    border-radius: 50%; filter: blur(100px); opacity: 0.06;
+    background: radial-gradient(circle, var(--amber), var(--orange));
+    bottom: -200px; left: 50%; transform: translateX(-50%);
+    pointer-events: none;
+  }
+  .demo-header {
+    text-align: center; margin-bottom: 52px;
+  }
+  .demo-video-wrap {
+    position: relative;
+    max-width: 860px; margin: 0 auto;
+    border-radius: 24px; overflow: hidden;
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(245,158,11,0.08);
+    background: #000;
+  }
+  /* Glow ring around video */
+  .demo-video-wrap::before {
+    content: '';
+    position: absolute; inset: -2px;
+    border-radius: 26px;
+    background: linear-gradient(135deg, rgba(245,158,11,0.3), rgba(249,115,22,0.2), rgba(16,185,129,0.15));
+    z-index: -1;
+  }
+  .demo-video-wrap iframe {
+    width: 100%; aspect-ratio: 16/9;
+    display: block; border: none;
+  }
+  /* Play button overlay (decorative badge) */
+  .demo-badge {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 10px 22px;
+    background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.25);
+    border-radius: var(--r-pill); font-size: 0.85rem; font-weight: 600;
+    color: var(--amber); margin-bottom: 20px;
+  }
+  .demo-badge i { font-size: 0.75rem; }
+  .demo-sub {
+    font-size: 0.95rem; color: var(--text-2); max-width: 540px;
+    margin: 20px auto 0; line-height: 1.75; text-align: center;
+  }
+  /* Feature chips below video */
+  .demo-chips {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;
+    margin-top: 32px;
+  }
+  .demo-chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 8px 18px;
+    background: var(--surface-1); border: 1px solid var(--border-subtle);
+    border-radius: var(--r-pill); font-size: 0.82rem;
+    color: var(--text-2); font-weight: 500;
+    transition: var(--t);
+  }
+  .demo-chip i { color: var(--amber); font-size: 0.75rem; }
+  .demo-chip:hover { background: var(--surface-2); border-color: var(--border-strong); color: var(--text-1); }
+
+  /* ===== FAQ SECTION ===== */
+  .faq-section {
+    padding: clamp(56px,8vw,96px) 0;
+    position: relative; z-index: 1;
+    background: var(--bg-raised);
+    border-top: 1px solid var(--border-subtle);
+  }
+  .faq-layout {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 64px; align-items: start;
+    max-width: 1200px; margin: 0 auto;
+    padding: 0 clamp(16px,4vw,48px);
+  }
+  .faq-sticky {
+    position: sticky; top: calc(var(--nav-h) + 32px);
+  }
+  .faq-sticky .section-sub {
+    font-size: 0.93rem; color: var(--text-2); line-height: 1.75; margin-bottom: 28px;
+  }
+  .faq-contact {
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px 20px;
+    background: var(--bg-card); border: 1px solid var(--border-subtle);
+    border-radius: var(--r-lg); text-decoration: none;
+    transition: var(--t);
+  }
+  .faq-contact:hover { border-color: var(--border-strong); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.25); }
+  .faq-contact-icon {
+    width: 40px; height: 40px; border-radius: 11px; flex-shrink: 0;
+    background: linear-gradient(135deg, rgba(245,158,11,0.15), rgba(249,115,22,0.1));
+    border: 1px solid rgba(245,158,11,0.2); color: var(--amber);
+    display: flex; align-items: center; justify-content: center; font-size: 0.9rem;
+  }
+  .faq-contact-text { font-size: 0.85rem; }
+  .faq-contact-text strong { display: block; font-size: 0.92rem; margin-bottom: 2px; }
+  .faq-contact-text span { color: var(--text-3); }
+  /* Accordion */
+  .faq-list { display: flex; flex-direction: column; gap: 10px; }
+  .faq-item {
+    background: var(--bg-card); border: 1px solid var(--border-subtle);
+    border-radius: var(--r-lg); overflow: hidden;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  }
+  .faq-item.open {
+    border-color: var(--border-strong);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.25), 0 0 0 1px rgba(245,158,11,0.06);
+  }
+  .faq-q {
+    width: 100%; text-align: left; padding: 22px 24px;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    background: none; border: none; cursor: pointer;
+    font-family: 'Outfit', sans-serif; font-size: 0.97rem; font-weight: 600;
+    color: var(--text-1); line-height: 1.45;
+    transition: var(--t);
+  }
+  .faq-q:hover { color: var(--amber); }
+  .faq-q-icon {
+    width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+    background: var(--surface-1); border: 1px solid var(--border-subtle);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem; color: var(--text-3);
+    transition: transform 0.35s cubic-bezier(0.4,0,0.2,1), background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  }
+  .faq-item.open .faq-q-icon {
+    transform: rotate(45deg);
+    background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.3); color: var(--amber);
+  }
+  .faq-a {
+    max-height: 0; overflow: hidden;
+    transition: max-height 0.45s cubic-bezier(0.4,0,0.2,1), padding 0.35s ease;
+    padding: 0 24px;
+  }
+  .faq-item.open .faq-a { max-height: 400px; padding: 0 24px 22px; }
+  .faq-a p { font-size: 0.9rem; color: var(--text-2); line-height: 1.75; }
+  .faq-a a { color: var(--amber); text-decoration: none; font-weight: 600; }
+  .faq-a a:hover { text-decoration: underline; }
+  /* FAQ category tabs */
+  .faq-tabs {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px;
+  }
+  .faq-tab {
+    padding: 6px 18px;
+    background: var(--surface-1); border: 1px solid var(--border-subtle);
+    border-radius: var(--r-pill); font-size: 0.82rem; font-weight: 600;
+    color: var(--text-3); cursor: pointer; transition: var(--t);
+  }
+  .faq-tab:hover, .faq-tab.active {
+    background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.3); color: var(--amber);
+  }
+
+  /* ===== RESPONSIVE — new sections ===== */
+  @media (max-width: 1024px) {
+    .faq-layout { grid-template-columns: 1fr; gap: 40px; }
+    .faq-sticky { position: static; }
+  }
+  @media (max-width: 768px) {
+    .demo-video-wrap { border-radius: 16px; }
+    .demo-chips { gap: 8px; }
+    .demo-chip { font-size: 0.78rem; padding: 7px 14px; }
+    .faq-q { padding: 18px 20px; font-size: 0.93rem; }
+    .faq-item.open .faq-a { padding: 0 20px 18px; }
+  }
+  @media (max-width: 560px) {
+    .demo-section { padding: clamp(40px,6vw,64px) 0; }
+    .faq-section  { padding: clamp(40px,6vw,64px) 0; }
+    .demo-video-wrap { border-radius: 12px; }
+    .faq-q { font-size: 0.9rem; padding: 16px 16px; }
+  }
 </style>
 {% endblock %}
 
@@ -632,128 +1168,133 @@
 ══════════════════════════════════════════════════════════════════ -->
 <section class="hero">
 
+  <!-- Glowing background orbs -->
+  <div class="hero-orb-bg" aria-hidden="true">
+    <div class="hero-orb" style="width:520px;height:520px;background:radial-gradient(circle,rgba(245,158,11,0.10),transparent 70%);top:-120px;left:-80px;--od:9s;--ox:30px;--oy:-25px;"></div>
+    <div class="hero-orb" style="width:380px;height:380px;background:radial-gradient(circle,rgba(249,115,22,0.07),transparent 70%);bottom:-80px;right:-60px;--od:11s;--odel:2s;--ox:-25px;--oy:20px;"></div>
+    <div class="hero-orb" style="width:260px;height:260px;background:radial-gradient(circle,rgba(16,185,129,0.05),transparent 70%);top:40%;left:45%;--od:8s;--odel:1s;--ox:15px;--oy:-15px;"></div>
+  </div>
+
   <!-- Three.js canvas lives here -->
   <canvas id="heroCanvas"></canvas>
 
-  <!-- Floating worker deco cards — desktop only (≥1480px) -->
-  <div class="hero-workers hero-workers-left" aria-hidden="true">
-    <div class="wf-card">
-      <img class="wf-avatar"
-           src="https://images.unsplash.com/photo-1621905251918-48416bd8575a?w=80&h=80&fit=crop&q=80"
-           alt="Electrician">
-      <div class="wf-info">
-        <div class="wf-name">Adewale O.</div>
-        <div class="wf-trade">⚡ Electrician</div>
-      </div>
-      <div class="wf-badge">96%</div>
-    </div>
-    <div class="wf-card">
-      <img class="wf-avatar"
-           src="https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?w=80&h=80&fit=crop&q=80"
-           alt="Carpenter">
-      <div class="wf-info">
-        <div class="wf-name">Emmanuel I.</div>
-        <div class="wf-trade">🔨 Carpenter</div>
-      </div>
-      <div class="wf-badge">85%</div>
-    </div>
-  </div>
+  <!-- NESTOVA-style grid lines overlay -->
+  <div class="hero-grid-overlay" aria-hidden="true"></div>
+  <div class="hero-grid-corner-glow" aria-hidden="true"></div>
+  <div class="hero-grid-accent-tl" aria-hidden="true"></div>
 
-  <div class="hero-workers hero-workers-right" aria-hidden="true">
-    <div class="wf-card">
-      <img class="wf-avatar"
-           src="https://images.unsplash.com/photo-1589939705384-5185137a7f0f?w=80&h=80&fit=crop&q=80"
-           alt="Solar installer">
-      <div class="wf-info">
-        <div class="wf-name">Blessing M.</div>
-        <div class="wf-trade">☀️ Solar Install.</div>
-      </div>
-      <div class="wf-badge">91%</div>
-    </div>
-    <div class="wf-card">
-      <img class="wf-avatar"
-           src="https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=80&h=80&fit=crop&q=80"
-           alt="Plumber">
-      <div class="wf-info">
-        <div class="wf-name">Chioma A.</div>
-        <div class="wf-trade">🔧 Plumber</div>
-      </div>
-      <div class="wf-badge">88%</div>
-    </div>
+  <!-- Floating trade tool icons -->
+  <div class="hero-tool-ring" aria-hidden="true" id="heroToolRing">
+    <!-- positioned by JS -->
   </div>
 
   <div class="container">
+    <div class="hero-inner">
 
-    <div class="hero-badge" id="heroBadge">
-      <span class="hero-badge-dot"></span>
-      Nigeria's #1 Skilled Trades Platform
-    </div>
+      <!-- LEFT: hero text content -->
+      <div class="hero-content">
 
-    <h1 id="heroH1">
-      Your Trade Skills<br>
-      Are <em>Worth</em> More
-    </h1>
-
-    <p class="hero-sub" id="heroSub">
-      Find skilled work as an
-      {% for cat in all_categories|slice:":4" %}{{ cat.name|lower }}{% if not forloop.last %}, {% endif %}{% endfor %}
-      and more. Trusted by workers across Lagos, Abuja, Port Harcourt, and beyond.
-    </p>
-
-    <div class="hero-search-wrap" id="heroSearch">
-      <form method="get" action="{% url 'marketplace:job_list' %}" id="heroSearchForm">
-        <div class="hero-search">
-          <div class="search-field">
-            <i class="fas fa-search"></i>
-            <input
-              type="text"
-              name="q"
-              id="heroSearchInput"
-              placeholder="e.g. Electrician, Carpenter, Plumber…"
-              autocomplete="off"
-              spellcheck="false"
-            >
-            <button type="button" class="search-clear-hero" id="heroSearchClear"
-                    title="Clear" aria-label="Clear search">
-              <i class="fas fa-times"></i>
-            </button>
-          </div>
-          <div class="search-loc">
-            <i class="fas fa-map-pin"></i>
-            <select name="state">
-              <option value="">All States</option>
-              {% for val, label in nigerian_states %}
-                <option value="{{ val }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <button type="submit" class="btn btn-primary">
-            <i class="fas fa-search"></i> Find Jobs
-          </button>
+        <div class="hero-badge" id="heroBadge">
+          <span class="hero-badge-dot"></span>
+          Nigeria's #1 Skilled Trades Platform
         </div>
-      </form>
-      <div class="ac-dropdown" id="heroAcDropdown" role="listbox"></div>
-    </div>
 
-    <div class="hero-tags" id="heroTags">
-      <span>Popular:</span>
-      {% for cat in all_categories|slice:":6" %}
-        <a href="{% url 'marketplace:job_list' %}?trade={{ cat.pk }}" class="hero-tag">
-          {{ cat.name }}
-        </a>
-      {% empty %}
-        <a href="{% url 'marketplace:job_list' %}?q=electrician" class="hero-tag">Electrician</a>
-        <a href="{% url 'marketplace:job_list' %}?q=solar" class="hero-tag">Solar Installation</a>
-        <a href="{% url 'marketplace:job_list' %}?q=carpenter" class="hero-tag">Carpentry</a>
-        <a href="{% url 'marketplace:job_list' %}?q=plumber" class="hero-tag">Plumbing</a>
-      {% endfor %}
-    </div>
+        <h1 id="heroH1">
+          <span id="heroTypedLine"></span><br>
+          Are <em data-text="Worth More">Worth More</em>
+        </h1>
 
-    <div class="hero-scroll" id="heroScroll" aria-hidden="true">
-      <div class="hero-scroll-mouse"></div>
-      <span>Scroll</span>
-    </div>
+        <p class="hero-sub" id="heroSub">
+          Find skilled work as an
+          {% for cat in all_categories|slice:":4" %}{{ cat.name|lower }}{% if not forloop.last %}, {% endif %}{% endfor %}
+          and more. Trusted by workers across Lagos, Abuja, Port Harcourt, and beyond.
+        </p>
 
+        <div class="hero-search-wrap" id="heroSearch">
+          <form method="get" action="{% url 'marketplace:job_list' %}" id="heroSearchForm">
+            <div class="hero-search">
+              <div class="search-field">
+                <i class="fas fa-search"></i>
+                <input
+                  type="text"
+                  name="q"
+                  id="heroSearchInput"
+                  placeholder="e.g. fix my generator, solar wiring Lagos..."
+                  autocomplete="off"
+                  spellcheck="false"
+                >
+                <button type="button" class="search-clear-hero" id="heroSearchClear"
+                        title="Clear" aria-label="Clear search">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+              <div class="search-loc">
+                <i class="fas fa-map-pin"></i>
+                <select name="state">
+                  <option value="">All States</option>
+                  {% for val, label in nigerian_states %}
+                    <option value="{{ val }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <button type="submit" class="btn btn-primary">
+                <i class="fas fa-search"></i> Find Jobs
+              </button>
+            </div>
+          </form>
+          <div class="ac-dropdown" id="heroAcDropdown" role="listbox"></div>
+        </div>
+
+        <div class="hero-tags" id="heroTags">
+          <span>Quick Browse:</span>
+          {% for cat in all_categories|slice:":6" %}
+            <a href="{% url 'marketplace:job_list' %}?trade={{ cat.pk }}" class="hero-tag">
+              {{ cat.name }}
+            </a>
+          {% empty %}
+            <a href="{% url 'marketplace:job_list' %}?q=electrician" class="hero-tag">Electrician</a>
+            <a href="{% url 'marketplace:job_list' %}?q=solar" class="hero-tag">Solar Installation</a>
+            <a href="{% url 'marketplace:job_list' %}?q=carpenter" class="hero-tag">Carpentry</a>
+            <a href="{% url 'marketplace:job_list' %}?q=plumber" class="hero-tag">Plumbing</a>
+          {% endfor %}
+        </div>
+
+        <div class="hero-scroll" id="heroScroll" aria-hidden="true">
+          <div class="hero-scroll-mouse"></div>
+          <span>Scroll</span>
+        </div>
+
+      </div><!-- /.hero-content -->
+
+      <!-- RIGHT: floating stat visual panel (desktop only) -->
+      <div class="hero-visual" aria-hidden="true">
+        <div class="wf-card" style="width:100%;max-width:270px;">
+          <div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,rgba(245,158,11,0.18),rgba(249,115,22,0.10));border:1px solid rgba(245,158,11,0.32);display:flex;align-items:center;justify-content:center;color:var(--amber);font-size:1.15rem;flex-shrink:0;"><i class="fas fa-bolt"></i></div>
+          <div class="wf-info">
+            <div class="wf-name" style="color:#fff;">Live Opportunities</div>
+            <div class="wf-trade" style="color:rgba(255,255,255,0.38);">Jobs updated daily</div>
+          </div>
+          <div class="wf-badge" style="font-size:0.82rem;">Live</div>
+        </div>
+        <div class="wf-card" style="width:100%;max-width:270px;">
+          <div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,rgba(16,185,129,0.18),rgba(16,185,129,0.08));border:1px solid rgba(16,185,129,0.32);display:flex;align-items:center;justify-content:center;color:#10B981;font-size:1.15rem;flex-shrink:0;"><i class="fas fa-shield-alt"></i></div>
+          <div class="wf-info">
+            <div class="wf-name" style="color:#fff;">Verified Employers</div>
+            <div class="wf-trade" style="color:rgba(255,255,255,0.38);">Trusted businesses only</div>
+          </div>
+          <div class="wf-badge" style="font-size:0.82rem;color:#10B981;">91%</div>
+        </div>
+        <div class="wf-card" style="width:100%;max-width:270px;">
+          <div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,rgba(56,189,248,0.18),rgba(56,189,248,0.08));border:1px solid rgba(56,189,248,0.32);display:flex;align-items:center;justify-content:center;color:#38BDF8;font-size:1.15rem;flex-shrink:0;"><i class="fas fa-map-marked-alt"></i></div>
+          <div class="wf-info">
+            <div class="wf-name" style="color:#fff;">All 36 States</div>
+            <div class="wf-trade" style="color:rgba(255,255,255,0.38);">Lagos, Abuja &amp; beyond</div>
+          </div>
+          <div class="wf-badge" style="font-size:0.82rem;color:#38BDF8;">NG</div>
+        </div>
+      </div><!-- /.hero-visual -->
+
+    </div><!-- /.hero-inner -->
   </div>
 </section>
 
@@ -825,9 +1366,10 @@
       {% for cat in categories %}
         {% with idx=forloop.counter0 %}
         <a href="{% url 'marketplace:trade_detail' slug=cat.slug %}"
-           class="card trade-card"
+           class="card trade-card tilt-card"
            data-aos="fade-up"
            data-aos-delay="{{ forloop.counter0|add:0 }}">
+          <div class="tilt-glare"></div>
 
           <div class="trade-icon" style="
             {% if idx|divisibleby:5 %}background:rgba(251,191,36,0.12);color:#F59E0B;
@@ -878,9 +1420,10 @@
     <div class="job-list">
       {% for job in featured_jobs %}
         <a href="{% url 'marketplace:job_detail' pk=job.pk %}"
-           class="card job-card"
+           class="card job-card tilt-card"
            data-aos="fade-up"
            style="text-decoration:none;">
+          <div class="tilt-glare"></div>
 
           <div class="job-logo" style="color:var(--amber);">
             {% if job.employer.logo %}
@@ -967,6 +1510,49 @@
         </div>
       {% endfor %}
     </div>
+  </div>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════════
+     DEMO VIDEO
+══════════════════════════════════════════════════════════════════ -->
+<section class="demo-section">
+  <div class="container">
+
+    <div class="demo-header" data-aos="fade-up">
+      <div class="demo-badge">
+        <i class="fas fa-play-circle"></i> Watch the Demo
+      </div>
+      <h2 class="section-title">
+        See TradeLink NG<br><span class="amber-text">In Action</span>
+      </h2>
+    </div>
+
+    <div class="demo-video-wrap" data-aos="zoom-in" data-aos-duration="800">
+      <!-- Replace src with your actual YouTube demo URL when ready -->
+      <iframe
+        src="https://www.youtube.com/embed/dQw4w9WgXcQ?rel=0&modestbranding=1&color=white"
+        title="TradeLink NG — How to Find Skilled Trade Work in Nigeria"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowfullscreen
+        loading="lazy"
+      ></iframe>
+    </div>
+
+    <p class="demo-sub" data-aos="fade-up" data-aos-delay="100">
+      In under 3 minutes, see how to create your profile, browse open trade jobs, apply to employers, and get AI-matched to the right opportunities across Nigeria.
+    </p>
+
+    <div class="demo-chips" data-aos="fade-up" data-aos-delay="180">
+      <span class="demo-chip"><i class="fas fa-user-check"></i> Profile Setup (60 sec)</span>
+      <span class="demo-chip"><i class="fas fa-search"></i> Browsing Jobs</span>
+      <span class="demo-chip"><i class="fas fa-bolt"></i> AI Matching</span>
+      <span class="demo-chip"><i class="fas fa-paper-plane"></i> Sending Applications</span>
+      <span class="demo-chip"><i class="fas fa-shield-alt"></i> Verified Employer Badges</span>
+      <span class="demo-chip"><i class="fas fa-bell"></i> Job Alerts</span>
+    </div>
+
   </div>
 </section>
 
@@ -1078,19 +1664,22 @@
     </div>
 
     <div class="steps-grid">
-      <div class="card step-card" data-aos="fade-up" data-aos-delay="0">
+      <div class="card step-card tilt-card" data-aos="fade-up" data-aos-delay="0">
+        <div class="tilt-glare"></div>
         <div class="step-num">01</div>
         <div class="step-icon"><i class="fas fa-user-pen"></i></div>
         <h3>Build Your Profile</h3>
         <p>Create your free profile in minutes. Add your trade skills, experience level, location, and the kind of work you're looking for.</p>
       </div>
-      <div class="card step-card" data-aos="fade-up" data-aos-delay="120">
+      <div class="card step-card tilt-card" data-aos="fade-up" data-aos-delay="120">
+        <div class="tilt-glare"></div>
         <div class="step-num">02</div>
         <div class="step-icon" style="color:var(--orange);"><i class="fas fa-bolt"></i></div>
         <h3>Get Smart Matches</h3>
         <p>Our AI instantly surfaces the most relevant jobs and employers. No endless scrolling — just opportunities that fit your real skills.</p>
       </div>
-      <div class="card step-card" data-aos="fade-up" data-aos-delay="240">
+      <div class="card step-card tilt-card" data-aos="fade-up" data-aos-delay="240">
+        <div class="tilt-glare"></div>
         <div class="step-num">03</div>
         <div class="step-icon" style="color:var(--emerald);"><i class="fas fa-handshake"></i></div>
         <h3>Get Hired &amp; Earn</h3>
@@ -1209,6 +1798,162 @@
 
 
 <!-- ════════════════════════════════════════════════════════════════
+     FAQ
+══════════════════════════════════════════════════════════════════ -->
+<section class="faq-section" id="faq">
+  <div class="faq-layout">
+
+    <!-- ── Left: sticky intro ── -->
+    <div class="faq-sticky" data-aos="fade-right">
+      <p class="eyebrow">Got Questions?</p>
+      <h2 class="section-title" style="margin-bottom:16px;">
+        Frequently<br><span class="amber-text">Asked</span>
+      </h2>
+      <p class="faq-sticky section-sub">
+        Everything you need to know about TradeLink NG — whether you're a skilled worker looking for jobs or an employer hiring talent.
+      </p>
+      <a href="/contact/" class="faq-contact">
+        <div class="faq-contact-icon"><i class="fas fa-headset"></i></div>
+        <div class="faq-contact-text">
+          <strong>Still have questions?</strong>
+          <span>Chat with our support team</span>
+        </div>
+        <i class="fas fa-arrow-right" style="margin-left:auto; color:var(--text-3); font-size:0.8rem;"></i>
+      </a>
+    </div>
+
+    <!-- ── Right: accordion ── -->
+    <div data-aos="fade-left" data-aos-delay="80">
+
+      <div class="faq-tabs" id="faqTabs">
+        <button class="faq-tab active" data-group="all">All</button>
+        <button class="faq-tab" data-group="workers">For Workers</button>
+        <button class="faq-tab" data-group="employers">For Employers</button>
+        <button class="faq-tab" data-group="platform">Platform</button>
+      </div>
+
+      <div class="faq-list" id="faqList">
+
+        <!-- Workers -->
+        <div class="faq-item" data-group="workers">
+          <button class="faq-q" aria-expanded="false">
+            Is TradeLink NG free for skilled workers?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>Yes — creating a worker profile, browsing jobs, and applying to openings is completely free. There are no hidden fees or subscription costs. We believe every Nigerian tradesperson deserves equal access to job opportunities.</p>
+          </div>
+        </div>
+
+        <div class="faq-item" data-group="workers">
+          <button class="faq-q" aria-expanded="false">
+            What trades can I register as on the platform?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>We support a wide range of trades including Electricians, Plumbers, Carpenters, Welders, Masons, Painters, Solar Installers, HVAC Technicians, Auto Mechanics, Hair Stylists, Tailors, Caterers, and many more. If your trade isn't listed, <a href="/contact/">contact us</a> and we'll add it.</p>
+          </div>
+        </div>
+
+        <div class="faq-item" data-group="workers">
+          <button class="faq-q" aria-expanded="false">
+            How does AI job matching work for workers?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>Once your profile is complete, our AI analyses your listed trade skills, years of experience, certifications, and preferred location — then automatically surfaces job openings that best match your profile. The more complete your profile, the better your matches. You can access your personalised matches from your <a href="{% url 'marketplace:dashboard' %}">dashboard</a>.</p>
+          </div>
+        </div>
+
+        <div class="faq-item" data-group="workers">
+          <button class="faq-q" aria-expanded="false">
+            How do I get the Verified Worker badge?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>The Verified badge is awarded after we confirm your identity and at least one skill credential (e.g. trade certificate, references from a previous employer, or a short skills test). Verification boosts your profile visibility significantly and builds trust with employers. Apply via your profile settings.</p>
+          </div>
+        </div>
+
+        <div class="faq-item" data-group="workers">
+          <button class="faq-q" aria-expanded="false">
+            Can I find contract/one-off gigs as well as full-time jobs?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>Absolutely. Job listings are categorised by type: Full-Time, Part-Time, Contract, and One-Off Projects. You can filter the job board by type to find exactly the kind of work that fits your schedule. Many tradespeople use TradeLink NG for both steady employment and side contracts.</p>
+          </div>
+        </div>
+
+        <!-- Employers -->
+        <div class="faq-item" data-group="employers">
+          <button class="faq-q" aria-expanded="false">
+            How do I post a job as an employer?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>Register an employer account, complete your company profile, then click "Post a Job" from your dashboard. Fill in the trade category, location, pay, and requirements — your listing goes live within minutes and is immediately visible to thousands of verified tradespeople. <a href="/register/">Get started free.</a></p>
+          </div>
+        </div>
+
+        <div class="faq-item" data-group="employers">
+          <button class="faq-q" aria-expanded="false">
+            How do I know the workers are genuinely skilled?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>Workers with the <strong style="color:var(--emerald);">Verified</strong> badge have passed our identity and credential check. Beyond that, you can review each worker's star ratings, reviews from past employers, portfolio photos, and years of experience — all displayed on their public profile before you make contact.</p>
+          </div>
+        </div>
+
+        <div class="faq-item" data-group="employers">
+          <button class="faq-q" aria-expanded="false">
+            Is there a cost to hire through TradeLink NG?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>Posting jobs and browsing worker profiles is free. Premium employer plans unlock features like promoted job listings, unlimited direct messaging, and advanced analytics. See our <a href="/pricing/">pricing page</a> for full details.</p>
+          </div>
+        </div>
+
+        <!-- Platform -->
+        <div class="faq-item" data-group="platform">
+          <button class="faq-q" aria-expanded="false">
+            Which Nigerian states does TradeLink NG cover?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>We currently cover all 36 Nigerian states plus the FCT. Our highest concentrations of jobs and workers are currently in Lagos, Abuja, Port Harcourt, Enugu, Kano, and Ibadan — but the platform is growing rapidly in every region.</p>
+          </div>
+        </div>
+
+        <div class="faq-item" data-group="platform">
+          <button class="faq-q" aria-expanded="false">
+            Is my personal data safe on the platform?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>We take data privacy seriously. Your personal information is encrypted, never sold to third parties, and only shared with employers when you apply to their jobs. We comply with the Nigeria Data Protection Regulation (NDPR). See our <a href="/privacy/">Privacy Policy</a> for full details.</p>
+          </div>
+        </div>
+
+        <div class="faq-item" data-group="platform">
+          <button class="faq-q" aria-expanded="false">
+            Does TradeLink NG have a mobile app?
+            <span class="faq-q-icon"><i class="fas fa-plus"></i></span>
+          </button>
+          <div class="faq-a" role="region">
+            <p>Our website is fully mobile-optimised and works great on any smartphone browser with no download needed. A dedicated Android and iOS app is currently in development and will be available soon. <a href="/notify/">Join the waitlist</a> to get notified at launch.</p>
+          </div>
+        </div>
+
+      </div><!-- /.faq-list -->
+    </div>
+  </div>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════════
      CTA
 ══════════════════════════════════════════════════════════════════ -->
 <section class="cta-section">
@@ -1302,7 +2047,7 @@ function renderAc(query) {
     .slice(0, 9);
 
   if (!results.length) {
-    heroDropdown.innerHTML = `<div class="ac-empty">No suggestions — press Enter to search</div>`;
+    heroDropdown.innerHTML = `<div class="ac-empty">Press Enter — our AI will find the best matches</div>`;
     openAc(); return;
   }
 
@@ -1414,8 +2159,68 @@ function toggleSaveHome(btn, jobId) {
 
 
 /* ─────────────────────────────────────────────────────────────────────
-   AOS — Animate On Scroll
+   FAQ — Accordion + Category Tabs
 ───────────────────────────────────────────────────────────────────── */
+(function initFAQ() {
+  const list  = document.getElementById('faqList');
+  const tabs  = document.querySelectorAll('.faq-tab');
+  if (!list) return;
+
+  // Accordion toggle
+  list.addEventListener('click', e => {
+    const btn = e.target.closest('.faq-q');
+    if (!btn) return;
+    const item = btn.closest('.faq-item');
+    const isOpen = item.classList.contains('open');
+
+    // Close all
+    list.querySelectorAll('.faq-item.open').forEach(i => {
+      i.classList.remove('open');
+      i.querySelector('.faq-q').setAttribute('aria-expanded', 'false');
+    });
+
+    // Open clicked (unless it was already open)
+    if (!isOpen) {
+      item.classList.add('open');
+      btn.setAttribute('aria-expanded', 'true');
+      // Smooth scroll into view on mobile
+      if (window.innerWidth < 768) {
+        setTimeout(() => item.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+      }
+    }
+  });
+
+  // Tab filter
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const group = tab.dataset.group;
+      // Close all open items first
+      list.querySelectorAll('.faq-item.open').forEach(i => {
+        i.classList.remove('open');
+        i.querySelector('.faq-q').setAttribute('aria-expanded', 'false');
+      });
+      list.querySelectorAll('.faq-item').forEach(item => {
+        if (group === 'all' || item.dataset.group === group) {
+          item.style.display = '';
+        } else {
+          item.style.display = 'none';
+        }
+      });
+    });
+  });
+
+  // Open first item by default
+  const firstItem = list.querySelector('.faq-item');
+  if (firstItem) {
+    firstItem.classList.add('open');
+    firstItem.querySelector('.faq-q').setAttribute('aria-expanded', 'true');
+  }
+})();
+
+
+
 AOS.init({
   duration: 720,
   once: true,
@@ -1425,103 +2230,264 @@ AOS.init({
 
 
 /* ─────────────────────────────────────────────────────────────────────
-   THREE.JS — Hero Network Canvas
+   THREE.JS — Hero 3D Particle Sphere
 ───────────────────────────────────────────────────────────────────── */
 (function initThreeHero() {
   const canvas = document.getElementById('heroCanvas');
   if (!canvas || typeof THREE === 'undefined') return;
 
   const heroSection = canvas.closest('.hero');
-  function setSize() {
-    canvas.width  = heroSection.offsetWidth;
-    canvas.height = heroSection.offsetHeight;
-    if (renderer) {
-      renderer.setSize(canvas.width, canvas.height, false);
-      camera.aspect = canvas.width / canvas.height;
-      camera.updateProjectionMatrix();
-    }
-  }
 
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
   const scene  = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 1000);
-  camera.position.z = 32;
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+  camera.position.z = 38;
+
+  function setSize() {
+    const w = heroSection.offsetWidth;
+    const h = heroSection.offsetHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
   setSize();
 
-  // ── Nodes ──
-  const NODE_COUNT  = 70;
-  const MAX_LINES   = 160;
-  const LINK_DIST   = 14;
+  // ── 1) Large outer sphere of glowing particles ──
+  const SPHERE_COUNT = 420;
+  const SPHERE_RADIUS = 20;
+  const spherePos = new Float32Array(SPHERE_COUNT * 3);
+  for (let i = 0; i < SPHERE_COUNT; i++) {
+    const phi   = Math.acos(-1 + (2 * i) / SPHERE_COUNT);
+    const theta = Math.sqrt(SPHERE_COUNT * Math.PI) * phi;
+    spherePos[i * 3]     = SPHERE_RADIUS * Math.cos(theta) * Math.sin(phi);
+    spherePos[i * 3 + 1] = SPHERE_RADIUS * Math.sin(theta) * Math.sin(phi);
+    spherePos[i * 3 + 2] = SPHERE_RADIUS * Math.cos(phi);
+  }
+  const sphereGeo = new THREE.BufferGeometry();
+  sphereGeo.setAttribute('position', new THREE.BufferAttribute(spherePos, 3));
+  const sphereMat = new THREE.PointsMaterial({
+    color: 0xF59E0B, size: 0.18,
+    transparent: true, opacity: 0.55,
+    sizeAttenuation: true,
+  });
+  const sphereMesh = new THREE.Points(sphereGeo, sphereMat);
+  scene.add(sphereMesh);
 
-  const nodes = Array.from({ length: NODE_COUNT }, () => ({
-    x:  (Math.random() - 0.5) * 64,
-    y:  (Math.random() - 0.5) * 42,
-    z:  (Math.random() - 0.5) * 18,
-    vx: (Math.random() - 0.5) * 0.012,
-    vy: (Math.random() - 0.5) * 0.012,
-  }));
+  // ── 2) Inner dense core cloud ──
+  const CORE_COUNT = 180;
+  const corePos = new Float32Array(CORE_COUNT * 3);
+  for (let i = 0; i < CORE_COUNT; i++) {
+    const r = 6 + Math.random() * 7;
+    const theta = Math.random() * Math.PI * 2;
+    const phi   = Math.acos(2 * Math.random() - 1);
+    corePos[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
+    corePos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+    corePos[i * 3 + 2] = r * Math.cos(phi);
+  }
+  const coreGeo = new THREE.BufferGeometry();
+  coreGeo.setAttribute('position', new THREE.BufferAttribute(corePos, 3));
+  const coreMat = new THREE.PointsMaterial({
+    color: 0xFBBF24, size: 0.28,
+    transparent: true, opacity: 0.75,
+  });
+  const coreMesh = new THREE.Points(coreGeo, coreMat);
+  scene.add(coreMesh);
 
-  // Points
-  const ptPos  = new Float32Array(NODE_COUNT * 3);
-  const ptGeo  = new THREE.BufferGeometry();
-  ptGeo.setAttribute('position', new THREE.BufferAttribute(ptPos, 3));
-  const ptMat  = new THREE.PointsMaterial({ color: 0xF59E0B, size: 0.35, transparent: true, opacity: 0.9 });
-  scene.add(new THREE.Points(ptGeo, ptMat));
-
-  // Lines
-  const lnPos  = new Float32Array(MAX_LINES * 6);
-  const lnGeo  = new THREE.BufferGeometry();
+  // ── 3) Connecting lattice lines on sphere ──
+  const LINE_COUNT = 90;
+  const lnPos = new Float32Array(LINE_COUNT * 6);
+  const lnGeo = new THREE.BufferGeometry();
   lnGeo.setAttribute('position', new THREE.BufferAttribute(lnPos, 3));
-  const lnMat  = new THREE.LineBasicMaterial({ color: 0xF59E0B, transparent: true, opacity: 0.18 });
-  const lines  = new THREE.LineSegments(lnGeo, lnMat);
-  scene.add(lines);
+  const lnMat = new THREE.LineBasicMaterial({
+    color: 0xF59E0B, transparent: true, opacity: 0.10,
+  });
+  const lineMesh = new THREE.LineSegments(lnGeo, lnMat);
+  scene.add(lineMesh);
 
-  let rafId;
+  // Pre-build lattice pairs
+  const latticePairs = [];
+  for (let i = 0; i < SPHERE_COUNT && latticePairs.length < LINE_COUNT; i++) {
+    for (let j = i + 1; j < SPHERE_COUNT && latticePairs.length < LINE_COUNT; j++) {
+      const dx = spherePos[i*3]-spherePos[j*3];
+      const dy = spherePos[i*3+1]-spherePos[j*3+1];
+      const dz = spherePos[i*3+2]-spherePos[j*3+2];
+      if (dx*dx+dy*dy+dz*dz < 28) latticePairs.push([i, j]);
+    }
+  }
+  latticePairs.forEach(([i, j], li) => {
+    if (li >= LINE_COUNT) return;
+    lnPos[li*6]   = spherePos[i*3];   lnPos[li*6+1] = spherePos[i*3+1]; lnPos[li*6+2] = spherePos[i*3+2];
+    lnPos[li*6+3] = spherePos[j*3];   lnPos[li*6+4] = spherePos[j*3+1]; lnPos[li*6+5] = spherePos[j*3+2];
+  });
+  lnGeo.attributes.position.needsUpdate = true;
+
+  // ── 4) Ambient floating node network (background) ──
+  const NODE_COUNT = 55;
+  const nodes = Array.from({ length: NODE_COUNT }, () => ({
+    x: (Math.random()-0.5)*80, y: (Math.random()-0.5)*50, z: (Math.random()-0.5)*10,
+    vx:(Math.random()-0.5)*0.008, vy:(Math.random()-0.5)*0.008,
+  }));
+  const netPos = new Float32Array(NODE_COUNT * 3);
+  const netGeo = new THREE.BufferGeometry();
+  netGeo.setAttribute('position', new THREE.BufferAttribute(netPos, 3));
+  const netMat = new THREE.PointsMaterial({ color:0xF97316, size:0.22, transparent:true, opacity:0.45 });
+  scene.add(new THREE.Points(netGeo, netMat));
+
+  const MAX_NET_LINES = 80;
+  const nlPos = new Float32Array(MAX_NET_LINES * 6);
+  const nlGeo = new THREE.BufferGeometry();
+  nlGeo.setAttribute('position', new THREE.BufferAttribute(nlPos, 3));
+  const nlMat = new THREE.LineBasicMaterial({ color:0xF97316, transparent:true, opacity:0.08 });
+  scene.add(new THREE.LineSegments(nlGeo, nlMat));
+
+  // Mouse parallax
+  let mx = 0, my = 0;
+  document.addEventListener('mousemove', e => {
+    mx = (e.clientX / window.innerWidth  - 0.5) * 2;
+    my = (e.clientY / window.innerHeight - 0.5) * 2;
+  });
+
+  let rafId, t = 0;
   function animate() {
     rafId = requestAnimationFrame(animate);
+    t += 0.004;
 
-    // Move nodes
+    // Rotate sphere slowly + tilt toward cursor
+    sphereMesh.rotation.y = t * 0.35 + mx * 0.12;
+    sphereMesh.rotation.x = t * 0.12 + my * 0.08;
+    coreMesh.rotation.y   = -t * 0.22 + mx * 0.08;
+    coreMesh.rotation.x   = t * 0.18 - my * 0.06;
+    lineMesh.rotation.copy(sphereMesh.rotation);
+
+    // Breathe scale
+    const s = 1 + Math.sin(t * 1.2) * 0.018;
+    sphereMesh.scale.setScalar(s);
+    coreMesh.scale.setScalar(1 + Math.sin(t * 0.9 + 1) * 0.025);
+
+    // Animate opacity gently
+    sphereMat.opacity = 0.45 + Math.sin(t * 0.8) * 0.1;
+    coreMat.opacity   = 0.65 + Math.sin(t * 1.1 + 0.5) * 0.1;
+
+    // Ambient net
     for (let i = 0; i < NODE_COUNT; i++) {
-      nodes[i].x += nodes[i].vx;
-      nodes[i].y += nodes[i].vy;
-      if (Math.abs(nodes[i].x) > 32) nodes[i].vx *= -1;
-      if (Math.abs(nodes[i].y) > 21) nodes[i].vy *= -1;
-      ptPos[i * 3]     = nodes[i].x;
-      ptPos[i * 3 + 1] = nodes[i].y;
-      ptPos[i * 3 + 2] = nodes[i].z;
+      nodes[i].x += nodes[i].vx; nodes[i].y += nodes[i].vy;
+      if (Math.abs(nodes[i].x) > 40) nodes[i].vx *= -1;
+      if (Math.abs(nodes[i].y) > 25) nodes[i].vy *= -1;
+      netPos[i*3] = nodes[i].x; netPos[i*3+1] = nodes[i].y; netPos[i*3+2] = nodes[i].z;
     }
-    ptGeo.attributes.position.needsUpdate = true;
-
-    // Rebuild line segments
-    let li = 0;
-    for (let i = 0; i < NODE_COUNT && li < MAX_LINES; i++) {
-      for (let j = i + 1; j < NODE_COUNT && li < MAX_LINES; j++) {
-        const dx = nodes[i].x - nodes[j].x;
-        const dy = nodes[i].y - nodes[j].y;
-        if (dx * dx + dy * dy < LINK_DIST * LINK_DIST) {
-          lnPos[li * 6]     = nodes[i].x; lnPos[li * 6 + 1] = nodes[i].y; lnPos[li * 6 + 2] = 0;
-          lnPos[li * 6 + 3] = nodes[j].x; lnPos[li * 6 + 4] = nodes[j].y; lnPos[li * 6 + 5] = 0;
-          li++;
+    netGeo.attributes.position.needsUpdate = true;
+    let li2 = 0;
+    for (let i = 0; i < NODE_COUNT && li2 < MAX_NET_LINES; i++) {
+      for (let j = i+1; j < NODE_COUNT && li2 < MAX_NET_LINES; j++) {
+        const dx=nodes[i].x-nodes[j].x, dy=nodes[i].y-nodes[j].y;
+        if (dx*dx+dy*dy < 180) {
+          nlPos[li2*6]=nodes[i].x; nlPos[li2*6+1]=nodes[i].y; nlPos[li2*6+2]=0;
+          nlPos[li2*6+3]=nodes[j].x; nlPos[li2*6+4]=nodes[j].y; nlPos[li2*6+5]=0;
+          li2++;
         }
       }
     }
-    lnGeo.setDrawRange(0, li * 2);
-    lnGeo.attributes.position.needsUpdate = true;
+    nlGeo.setDrawRange(0, li2 * 2);
+    nlGeo.attributes.position.needsUpdate = true;
 
     renderer.render(scene, camera);
   }
   animate();
 
-  // Resize
-  const ro = new ResizeObserver(() => setSize());
+  const ro = new ResizeObserver(setSize);
   ro.observe(heroSection);
-
-  // Pause when off-screen
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) cancelAnimationFrame(rafId);
     else animate();
+  });
+})();
+
+
+/* ─────────────────────────────────────────────────────────────────────
+   TYPED.JS — Hero typewriter
+───────────────────────────────────────────────────────────────────── */
+(function initTyped() {
+  if (typeof Typed === 'undefined') return;
+  new Typed('#heroTypedLine', {
+    strings: [
+      'Your Trade Skills',
+      'Your Craft &amp; Expertise',
+      'Your Hard Work',
+      'Your Career',
+      'Your Potential',
+    ],
+    typeSpeed:    52,
+    backSpeed:    28,
+    backDelay:    2400,
+    startDelay:   600,
+    loop:         true,
+    cursorChar:   '|',
+    smartBackspace: true,
+  });
+})();
+
+
+/* ─────────────────────────────────────────────────────────────────────
+   FLOATING TOOL ICONS — Hero ring
+───────────────────────────────────────────────────────────────────── */
+(function initToolRing() {
+  const ring = document.getElementById('heroToolRing');
+  if (!ring) return;
+  const tools = [
+    { icon: 'fas fa-bolt',        size: 42, top: '12%', left: '8%',   dur: '7.2s', delay: '0s'   },
+    { icon: 'fas fa-wrench',      size: 38, top: '70%', left: '5%',   dur: '8.5s', delay: '1.2s' },
+    { icon: 'fas fa-hard-hat',    size: 44, top: '20%', left: '92%',  dur: '6.8s', delay: '0.6s' },
+    { icon: 'fas fa-hammer',      size: 36, top: '75%', left: '89%',  dur: '9.0s', delay: '2.0s' },
+    { icon: 'fas fa-solar-panel', size: 40, top: '45%', left: '3%',   dur: '7.8s', delay: '0.3s' },
+    { icon: 'fas fa-tools',       size: 38, top: '50%', left: '94%',  dur: '8.2s', delay: '1.5s' },
+    { icon: 'fas fa-paint-roller',size: 36, top: '85%', left: '50%',  dur: '7.5s', delay: '0.9s' },
+    { icon: 'fas fa-cog',         size: 34, top: '5%',  left: '50%',  dur: '9.5s', delay: '1.8s' },
+  ];
+  tools.forEach(t => {
+    const el = document.createElement('div');
+    el.className = 'tool-float';
+    el.style.cssText = [
+      `width:${t.size}px`, `height:${t.size}px`,
+      `top:${t.top}`, `left:${t.left}`,
+      `--dur:${t.dur}`, `--delay:${t.delay}`,
+    ].join(';');
+    el.innerHTML = `<i class="${t.icon}"></i>`;
+    ring.appendChild(el);
+    setTimeout(() => el.classList.add('show'), 1200);
+  });
+})();
+
+
+/* ─────────────────────────────────────────────────────────────────────
+   3D TILT CARDS — mousemove perspective effect
+───────────────────────────────────────────────────────────────────── */
+(function initTiltCards() {
+  const MAX_TILT = 8; // degrees
+  document.querySelectorAll('.tilt-card').forEach(card => {
+    card.style.setProperty('perspective', '900px');
+    const glare = card.querySelector('.tilt-glare');
+
+    card.addEventListener('mousemove', e => {
+      const r  = card.getBoundingClientRect();
+      const cx = r.left + r.width  / 2;
+      const cy = r.top  + r.height / 2;
+      const dx = (e.clientX - cx) / (r.width  / 2);
+      const dy = (e.clientY - cy) / (r.height / 2);
+      const rx =  dy * MAX_TILT;
+      const ry = -dx * MAX_TILT;
+      card.style.transform = `perspective(900px) rotateX(${rx}deg) rotateY(${ry}deg) scale3d(1.02,1.02,1.02)`;
+      if (glare) {
+        const gx = ((e.clientX - r.left) / r.width)  * 100;
+        const gy = ((e.clientY - r.top)  / r.height) * 100;
+        glare.style.setProperty('--gx', `${gx}%`);
+        glare.style.setProperty('--gy', `${gy}%`);
+      }
+    });
+    card.addEventListener('mouseleave', () => {
+      card.style.transform = 'perspective(900px) rotateX(0) rotateY(0) scale3d(1,1,1)';
+    });
   });
 })();
 
@@ -1534,26 +2500,26 @@ AOS.init({
 
   // Set initial states
   gsap.set(['#heroBadge','#heroH1','#heroSub','#heroSearch','#heroTags'], {
-    opacity: 0, y: 24,
+    opacity: 0, y: 28,
   });
   gsap.set('#heroScroll', { opacity: 0, y: 10 });
-  gsap.set('.wf-card', { opacity: 0, scale: 0.9 });
+  gsap.set('.wf-card',    { opacity: 0, scale: 0.88, rotationY: 8 });
 
-  // Hero timeline
-  gsap.timeline({ delay: 0.25 })
-    .to('#heroBadge', { opacity: 1, y: 0, duration: 0.65, ease: 'power3.out' })
-    .to('#heroH1',    { opacity: 1, y: 0, duration: 0.8,  ease: 'power3.out' }, '-=0.4')
+  // Hero timeline — staggered cinematic entrance
+  gsap.timeline({ delay: 0.35 })
+    .to('#heroBadge', { opacity: 1, y: 0, duration: 0.7,  ease: 'back.out(1.8)' })
+    .to('#heroH1',    { opacity: 1, y: 0, duration: 0.85, ease: 'power3.out' }, '-=0.4')
     .to('#heroSub',   { opacity: 1, y: 0, duration: 0.65, ease: 'power3.out' }, '-=0.45')
     .to('#heroSearch',{ opacity: 1, y: 0, duration: 0.65, ease: 'power3.out' }, '-=0.38')
     .to('#heroTags',  { opacity: 1, y: 0, duration: 0.55, ease: 'power3.out' }, '-=0.3')
     .to('#heroScroll',{ opacity: 1, y: 0, duration: 0.5,  ease: 'power3.out' }, '-=0.2')
-    .to('.wf-card',   { opacity: 1, scale: 1, stagger: 0.14, duration: 0.75, ease: 'back.out(1.5)' }, '-=0.65');
+    .to('.wf-card',   { opacity: 1, scale: 1, rotationY: 0, stagger: 0.16, duration: 0.8, ease: 'back.out(1.6)' }, '-=0.5');
 
   // Floating animation for worker cards
-  gsap.to('.hero-workers-left  .wf-card:nth-child(1)', { y: -10, repeat: -1, yoyo: true, duration: 3.2, ease: 'sine.inOut' });
-  gsap.to('.hero-workers-left  .wf-card:nth-child(2)', { y: -8,  repeat: -1, yoyo: true, duration: 3.8, ease: 'sine.inOut', delay: 0.7 });
-  gsap.to('.hero-workers-right .wf-card:nth-child(1)', { y: -9,  repeat: -1, yoyo: true, duration: 3.5, ease: 'sine.inOut', delay: 0.4 });
-  gsap.to('.hero-workers-right .wf-card:nth-child(2)', { y: -11, repeat: -1, yoyo: true, duration: 4.0, ease: 'sine.inOut', delay: 1.1 });
+  gsap.to('.hero-workers-left  .wf-card:nth-child(1)', { y: -10, repeat:-1, yoyo:true, duration:3.2, ease:'sine.inOut' });
+  gsap.to('.hero-workers-left  .wf-card:nth-child(2)', { y: -8,  repeat:-1, yoyo:true, duration:3.8, ease:'sine.inOut', delay:0.7 });
+  gsap.to('.hero-workers-right .wf-card:nth-child(1)', { y: -9,  repeat:-1, yoyo:true, duration:3.5, ease:'sine.inOut', delay:0.4 });
+  gsap.to('.hero-workers-right .wf-card:nth-child(2)', { y: -11, repeat:-1, yoyo:true, duration:4.0, ease:'sine.inOut', delay:1.1 });
 })();
 
 

@@ -524,6 +524,11 @@
       {% if worker.is_verified %}
         <span class="verified-chip" style="margin-left:6px;"><i class="fas fa-shield-check"></i> Verified</span>
       {% endif %}
+      {% if verification_profile %}
+        <div style="margin-top: 10px;">
+          {% include "verification/includes/_verification_badge.html" with vp=verification_profile %}
+        </div>
+      {% endif %}
     </div>
 
     <div class="sidebar-label">Main</div>
@@ -559,6 +564,30 @@
       {% if unread_count > 0 %}<span class="sidebar-badge">{{ unread_count }}</span>{% endif %}
     </a>
 
+    {# ── Other Dashboards ────────────────────────────────────────────────── #}
+    {% if has_employer_profile or is_seller %}
+    <div class="sidebar-label">Switch Role</div>
+    {% endif %}
+    {% if has_employer_profile %}
+    <a href="{% url 'marketplace:employer_dashboard' %}" class="sidebar-link" title="You are also an Employer — manage your posted jobs here">
+      <i class="fas fa-briefcase"></i>
+      <span>Employer Dashboard</span>
+      <i class="fas fa-arrow-right" style="margin-left:auto;font-size:0.7rem;opacity:0.5;"></i>
+    </a>
+    {% endif %}
+    {% if is_seller %}
+    <a href="{% url 'mktplace:seller_dashboard' %}" class="sidebar-link" title="Sell tools & equipment on the marketplace">
+      <i class="fas fa-store"></i>
+      <span>Seller Dashboard</span>
+      <i class="fas fa-arrow-right" style="margin-left:auto;font-size:0.7rem;opacity:0.5;"></i>
+    </a>
+    {% endif %}
+    <a href="{% url 'mktplace:order_list' %}" class="sidebar-link" title="View products you have purchased">
+      <i class="fas fa-shopping-bag"></i>
+      <span>My Purchases</span>
+      <i class="fas fa-arrow-right" style="margin-left:auto;font-size:0.7rem;opacity:0.5;"></i>
+    </a>
+
     <div class="sidebar-spacer"></div>
     <div class="sidebar-divider"></div>
     <form method="post" action="{% url 'signout' %}" style="padding:4px 0;">
@@ -578,7 +607,7 @@
     <!-- ── Page header ─────────────────────────────────────────────── -->
     <div class="dash-header fade-up">
       <div>
-        <div class="dash-greeting">Good day, {{ worker.user.get_full_name|default:worker.user.username }}</div>
+        <div class="dash-greeting" id="dashGreeting">Good day, {{ worker.user.get_full_name|default:worker.user.username }}</div>
         <h1 class="dash-title">Your <span>Worker</span> Dashboard</h1>
       </div>
       <div class="dash-actions">
@@ -615,7 +644,7 @@
       </div>
 
       <div class="stat-card">
-        <div class="stat-icon emerald"><i class="fas fa-star"></i></div>
+        <div class="stat-icon sky"><i class="fas fa-star"></i></div>
         <div class="stat-value">{% if avg_rating %}{{ avg_rating }}{% else %}—{% endif %}</div>
         <div class="stat-label">Avg. Rating</div>
         {% if review_count > 0 %}
@@ -626,10 +655,10 @@
       </div>
 
       <div class="stat-card">
-        <div class="stat-icon sky"><i class="fas fa-bookmark"></i></div>
-        <div class="stat-value">{{ saved_jobs|length }}</div>
-        <div class="stat-label">Saved Jobs</div>
-        <div class="stat-delta neutral">Bookmarked</div>
+        <div class="stat-icon emerald"><i class="fas fa-wallet"></i></div>
+        <div class="stat-value">₦{{ total_earnings|floatformat:0 }}</div>
+        <div class="stat-label">Total Earnings</div>
+        <div class="stat-delta neutral">All time</div>
       </div>
 
     </div>
@@ -1010,6 +1039,20 @@
       });
     }
   });
+
+  // Time-based greeting
+  (function () {
+    const greetingEl = document.getElementById('dashGreeting');
+    if (!greetingEl) return;
+    const hour = new Date().getHours();
+    let salutation;
+    if (hour >= 5 && hour < 12)       salutation = 'Good morning,';
+    else if (hour >= 12 && hour < 17) salutation = 'Good afternoon,';
+    else if (hour >= 17 && hour < 21) salutation = 'Good evening,';
+    else                               salutation = 'Good night,';
+    // Replace only the "Good day," part, keep the name untouched
+    greetingEl.textContent = greetingEl.textContent.replace(/^Good day,/, salutation);
+  })();
 
   // Stagger-fade cards in view
   const observer = new IntersectionObserver((entries) => {

@@ -1116,10 +1116,10 @@
 
                 {% else %}
                   {# Employer or user without worker profile #}
-                  <a href="{% url 'marketplace:worker_profile_edit' %}"
+                  <a href="{% url 'marketplace:job_apply' pk=job.pk %}"
                      class="jd-btn-apply">
-                    <i class="fas fa-user-pen"></i>
-                    Set Up Worker Profile to Apply
+                    <i class="fas fa-paper-plane"></i>
+                    Apply for the job
                   </a>
                 {% endif %}
 

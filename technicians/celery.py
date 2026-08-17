@@ -1,6 +1,12 @@
 # tradelink/celery.py
 
 import os
+import asyncio
+import sys
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from celery import Celery
 
 # Tell Celery which Django settings module to use

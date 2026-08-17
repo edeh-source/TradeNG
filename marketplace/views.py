@@ -185,9 +185,11 @@ class ProductListView(View):
             pass
 
         # ── Semantic / keyword search ────────────────────────────────────
+        # Encoding is offloaded to the Celery worker via RPC — PyTorch never
+        # runs in the ASGI web-server process (mirrors the jobs app pattern).
         semantic_active = False
         if q:
-            from marketplace.service.market_place_service_escrow import (
+            from marketplace.service.search_service import (
                 semantic_product_search,
             )
             ranked = semantic_product_search(q, product_pks=list(qs.values_list('pk', flat=True)))
@@ -638,7 +640,10 @@ class ProductCreateView(SellerRequiredMixin, View):
         lga         = request.POST.get('lga', '').strip()
         pickup_notes = request.POST.get('pickup_notes', '').strip()
         cat_id      = request.POST.get('category', '')
-        publish     = request.POST.get('publish') == '1'
+        publish     = request.POST.get('publish') == 'publish'
+        print("This is publish", publish)
+        if publish == "publish":
+            print("yes")
 
         errors = {}
         if not title:
@@ -1198,16 +1203,14 @@ class BuyNowView(LoginRequiredMixin, View):
             agreed_price = product.price,
             status       = Order.Status.PENDING,
         )
-        Product.objects.filter(pk=pk).update(status=Product.Status.RESERVED)
 
         # Initialize Paystack payment
-        from marketplace.service.marketplace_escrow_service import initialize_order_payment
+        from marketplace.service.market_place_service_escrow import initialize_order_payment
         result = initialize_order_payment(str(order.pk), request.user.email)
 
         if 'error' in result:
-            # Roll back reservation on payment init failure
+            # Roll back order on payment init failure
             order.delete()
-            Product.objects.filter(pk=pk).update(status=Product.Status.ACTIVE)
             messages.error(
                 request,
                 f'Could not initialize payment: {result["error"]}. Please try again.',
@@ -1348,7 +1351,7 @@ class ConfirmReceiptView(LoginRequiredMixin, View):
             buyer=request.user,
             status=Order.Status.PAID,
         )
-        from marketplace.service.marketplace_escrow_service import confirm_order_receipt
+        from marketplace.service.market_place_service_escrow import confirm_order_receipt
         success = confirm_order_receipt(str(order.pk))
 
         if success:
@@ -1367,7 +1370,7 @@ class ConfirmReceiptView(LoginRequiredMixin, View):
 #  BUYER — PAYSTACK CALLBACK
 # ──────────────────────────────────────────────────────────────────────────────
 
-class PaystackCallbackView(LoginRequiredMixin, View):
+class PaystackCallbackView(View):
     """
     GET /marketplace/paystack/callback/
 
@@ -1388,8 +1391,11 @@ class PaystackCallbackView(LoginRequiredMixin, View):
 
         order = Order.objects.filter(
             paystack_payment_ref=reference,
-            buyer=request.user,
         ).first()
+
+        if order and request.user.is_authenticated and order.buyer != request.user:
+            messages.error(request, 'You do not have permission to view this order.')
+            return redirect('mktplace:order_list')
 
         if not order:
             messages.warning(
@@ -1610,7 +1616,7 @@ class DisputeAdminResolveView(LoginRequiredMixin, View):
         order = dispute.order
 
         if resolution == OrderDispute.Resolution.RELEASED_TO_SELLER:
-            from marketplace.service.marketplace_escrow_service import release_order_to_seller
+            from marketplace.service.market_place_service_escrow import release_order_to_seller
             success = release_order_to_seller(str(order.pk))
             if success:
                 messages.success(request, 'Funds released to seller.')

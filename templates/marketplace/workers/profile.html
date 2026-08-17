@@ -554,6 +554,9 @@
       <div class="wp-identity fade-up">
 
         <div class="wp-badges">
+          {% if worker.user.verification_profile %}
+            {% include "verification/includes/_verification_badge.html" with vp=worker.user.verification_profile %}
+          {% endif %}
           {% if worker.is_verified %}
           <span class="wp-badge wp-badge-verified">
             <i class="fas fa-circle-check"></i> Verified

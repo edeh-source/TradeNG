@@ -119,7 +119,7 @@ class TextEncoder:
             try:
                 from sentence_transformers import SentenceTransformer
                 logger.info("Loading sentence-transformer from %r …", model_path)
-                self._model = SentenceTransformer(model_path)
+                self._model = SentenceTransformer(model_path, local_files_only=True)
                 logger.info("Text encoder ready (dim=%d).", EMBEDDING_DIM)
             except Exception as exc:
                 logger.exception("Failed to load text encoder from %r: %s", model_path, exc)
@@ -173,6 +173,11 @@ class TextEncoder:
             result[idx] = [0.0] * EMBEDDING_DIM
 
         return result
+
+    @property
+    def is_ready(self) -> bool:
+        """True if the model is already loaded in memory (non-blocking check)."""
+        return self._model is not None
 
     @property
     def embedding_dim(self) -> int:

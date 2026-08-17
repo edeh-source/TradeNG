@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load socialaccount %}
 {% block title %}Sign In — TradeLink NG{% endblock %}
 
 {% block extra_head %}
@@ -362,15 +363,15 @@
 
       <!-- Social login -->
       <div class="social-grid">
-        <button class="social-login-btn" type="button">
+        <a href="{% provider_login_url 'google' process='login' %}" class="social-login-btn">
           <i class="fab fa-google" style="color:#4285F4;"></i> <span class="btn-label">Google</span>
-        </button>
-        <button class="social-login-btn" type="button">
+        </a>
+        <a href="{% provider_login_url 'linkedin_oauth2' process='login' %}" class="social-login-btn">
           <i class="fab fa-linkedin" style="color:#0A66C2;"></i> <span class="btn-label">LinkedIn</span>
-        </button>
-        <button class="social-login-btn" type="button">
+        </a>
+        <a href="{% provider_login_url 'facebook' process='login' %}" class="social-login-btn">
           <i class="fab fa-facebook-f" style="color:#1877F2;"></i> <span class="btn-label">Facebook</span>
-        </button>
+        </a>
       </div>
 
       <div class="or-divider"><span>or continue with email</span></div>
@@ -434,7 +435,7 @@
             <div class="checkbox-box"><i class="fas fa-check"></i></div>
             <span>Remember me</span>
           </label>
-          <a href="/accounts/password-reset/" class="forgot-link">Forgot password?</a>
+          <a href="{% url 'password_reset' %}" class="forgot-link">Forgot password?</a>
         </div>
 
         <button type="submit" class="submit-btn" id="submitBtn">

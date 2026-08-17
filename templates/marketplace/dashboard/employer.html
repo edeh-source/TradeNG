@@ -7,469 +7,889 @@
      employer      — EmployerProfile (user, company_name, company_type,
                      industry, logo, state, lga, is_verified, about)
      jobs          — QuerySet[Job] annotated with app_count, ordered -created
-                     Fields: id, title, status, job_type, pay_type, pay_min,
-                     pay_max, state, lga, slots, deadline, created,
-                     applications_count, views_count, trade_category
      recent_apps   — QuerySet[JobApplication] status=PENDING, [:8]
-                     select_related: worker__user, job
-                     Fields: id, applied_at, clip_match_score,
-                     worker.user.username / get_full_name,
-                     job.title, job.pk
+     pending_milestones      — QuerySet[Milestone] unfunded [:5]
+     pending_milestones_total — int
      unread_count  — int (navbar badge)
+     has_worker_profile — bool
 ───────────────────────────────────────────────────────────────────────────── #}
 
 {% block extra_head %}
 <style>
 /* =====================================================
-   EMPLOYER DASHBOARD — TradeLink NG
-   Context: employer, jobs, recent_apps, unread_count
+   EMPLOYER DASHBOARD — TradeLink NG (v3 Professional)
 ===================================================== */
 
-/* ── PAGE SHELL ── */
-.ed-page { padding-top: var(--nav-h); position: relative; z-index: 1; }
-
-/* ── HERO / HEADER BAND ── */
-.ed-hero {
-  padding: 44px 0 40px;
-  background: linear-gradient(
-    160deg,
-    rgba(245,158,11,0.06) 0%,
-    rgba(249,115,22,0.03) 50%,
-    transparent 100%
-  );
-  border-bottom: 1px solid var(--border-subtle);
-  position: relative; overflow: hidden;
-}
-.ed-hero::before {
-  content: '';
-  position: absolute; top: -100px; right: -80px;
-  width: 480px; height: 480px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(245,158,11,0.08), transparent 65%);
-  pointer-events: none;
-}
-.ed-hero-inner {
-  display: flex; align-items: flex-start;
-  justify-content: space-between; gap: 24px; flex-wrap: wrap;
-}
-
-/* Company identity */
-.ed-identity { display: flex; align-items: center; gap: 20px; }
-.ed-logo {
-  width: 72px; height: 72px; border-radius: 20px; flex-shrink: 0;
-  background: var(--surface-1); border: 1px solid var(--border-subtle);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 1.8rem; overflow: hidden;
-  box-shadow: 0 6px 24px rgba(0,0,0,0.35);
-}
-.ed-logo img { width: 100%; height: 100%; object-fit: cover; }
-.ed-greeting {
-  font-size: 0.82rem; color: var(--text-3); margin-bottom: 4px;
-  display: flex; align-items: center; gap: 6px;
-}
-.ed-company-name {
-  font-family: 'Fraunces', serif;
-  font-size: clamp(1.4rem, 3.5vw, 2rem);
-  font-weight: 900; letter-spacing: -0.5px;
-  color: var(--text-1); line-height: 1.1; margin-bottom: 8px;
-}
-.ed-badges { display: flex; flex-wrap: wrap; gap: 7px; }
-.ed-badge {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 3px 11px; border-radius: var(--r-pill);
-  font-size: 0.73rem; font-weight: 700;
-}
-.ed-badge-verified {
-  background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25);
-  color: var(--emerald);
-}
-.ed-badge-type {
-  background: var(--surface-1); border: 1px solid var(--border-subtle);
-  color: var(--text-2);
-}
-
-/* Hero CTA */
-.ed-hero-actions { display: flex; gap: 10px; flex-shrink: 0; flex-wrap: wrap; align-items: flex-start; }
-.ed-btn-primary {
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 12px 22px;
-  background: linear-gradient(135deg, var(--amber), var(--orange));
-  color: #0C0A08; font-family: 'Outfit', sans-serif;
-  font-size: 0.92rem; font-weight: 700; border-radius: var(--r-md);
-  text-decoration: none; transition: var(--t);
-  box-shadow: 0 4px 20px rgba(245,158,11,0.28); white-space: nowrap;
-}
-.ed-btn-primary:hover { filter: brightness(1.06); transform: translateY(-1px); box-shadow: 0 8px 28px rgba(245,158,11,0.38); }
-.ed-btn-ghost {
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 12px 22px;
-  background: transparent; border: 1px solid var(--border-subtle);
-  color: var(--text-2); font-family: 'Outfit', sans-serif;
-  font-size: 0.92rem; font-weight: 600; border-radius: var(--r-md);
-  text-decoration: none; transition: var(--t); white-space: nowrap;
-}
-.ed-btn-ghost:hover { background: var(--surface-1); color: var(--text-1); border-color: var(--border-strong); }
-
-/* ── STATS ROW ── */
-.ed-stats-band {
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-raised);
-}
-.ed-stats-inner {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0;
-}
-.ed-stat {
-  padding: 24px 28px;
-  border-right: 1px solid var(--border-subtle);
+/* ── PAGE SHELL ────────────────────────────────────── */
+.epd {
+  padding-top: var(--nav-h);
   position: relative;
-}
-.ed-stat:last-child { border-right: none; }
-.ed-stat-number {
-  font-family: 'Fraunces', serif; font-size: 2rem; font-weight: 900;
-  line-height: 1;
-  background: linear-gradient(135deg, var(--amber), var(--orange));
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-.ed-stat-label {
-  font-size: 0.78rem; color: var(--text-3); font-weight: 600;
-  text-transform: uppercase; letter-spacing: 1px; margin-top: 5px;
-}
-.ed-stat-sub {
-  font-size: 0.75rem; color: var(--text-3); margin-top: 2px;
+  z-index: 1;
+  min-height: 100vh;
 }
 
-/* ── BODY LAYOUT ── */
-.ed-body {
-  padding: 44px 0 80px;
-}
-.ed-layout {
-  display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: 44px; align-items: start;
-}
-
-/* ── SECTION HEADER ── */
-.ed-section-head {
-  display: flex; align-items: center; gap: 10px;
-  font-family: 'Fraunces', serif; font-size: 1.05rem; font-weight: 800;
-  color: var(--text-1); margin-bottom: 18px;
-  padding-bottom: 13px; border-bottom: 1px solid var(--border-subtle);
-}
-.ed-section-head i { color: var(--amber); font-size: 0.86rem; }
-.ed-section-count {
-  margin-left: auto; font-family: 'Outfit', sans-serif;
-  font-size: 0.76rem; font-weight: 600; color: var(--amber);
-  background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2);
-  border-radius: var(--r-pill); padding: 2px 9px;
-}
-.ed-section-link {
-  margin-left: auto; font-family: 'Outfit', sans-serif;
-  font-size: 0.78rem; font-weight: 600; color: var(--text-3);
-  text-decoration: none; transition: var(--t);
-  display: flex; align-items: center; gap: 4px;
-}
-.ed-section-link:hover { color: var(--amber); }
-
-/* ── JOB CARDS ── */
-.ed-jobs-list { display: flex; flex-direction: column; gap: 12px; }
-
-.ed-job-card {
-  background: var(--bg-card); border: 1px solid var(--border-subtle);
-  border-radius: var(--r-xl); overflow: hidden; transition: var(--t);
+/* ── HERO BAND ────────────────────────────────────── */
+.epd-hero {
+  padding: 52px 0 0;
   position: relative;
-}
-.ed-job-card:hover { border-color: var(--border-strong); transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.35); }
-
-.ed-job-card-inner {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 16px; align-items: start;
-  padding: 20px 22px;
-}
-
-/* Status stripe on left edge */
-.ed-job-card[data-status="active"]  { border-left: 3px solid var(--emerald); }
-.ed-job-card[data-status="paused"]  { border-left: 3px solid var(--amber); }
-.ed-job-card[data-status="draft"]   { border-left: 3px solid var(--border-strong); }
-.ed-job-card[data-status="filled"]  { border-left: 3px solid var(--sky); }
-.ed-job-card[data-status="closed"]  { border-left: 3px solid rgba(239,68,68,0.5); }
-.ed-job-card[data-status="expired"] { border-left: 3px solid rgba(239,68,68,0.4); }
-
-.ed-job-title {
-  font-family: 'Fraunces', serif; font-size: 1rem; font-weight: 800;
-  color: var(--text-1); margin-bottom: 6px;
-  text-decoration: none; transition: var(--t); display: block;
-}
-.ed-job-title:hover { color: var(--amber); }
-
-.ed-job-meta {
-  display: flex; flex-wrap: wrap; gap: 12px;
-  font-size: 0.8rem; color: var(--text-3); margin-bottom: 10px;
-}
-.ed-job-meta span { display: flex; align-items: center; gap: 5px; }
-.ed-job-meta i { font-size: 0.68rem; }
-
-.ed-job-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.ed-job-tag {
-  display: inline-flex; padding: 3px 9px;
-  background: var(--surface-1); border: 1px solid var(--border-subtle);
-  border-radius: var(--r-pill); font-size: 0.72rem; font-weight: 500;
-  color: var(--text-2);
-}
-.ed-job-tag.amber {
-  background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.2);
-  color: var(--amber-light);
-}
-.ed-job-tag.green {
-  background: rgba(16,185,129,0.08); border-color: rgba(16,185,129,0.2);
-  color: var(--emerald);
-}
-.ed-job-tag.sky {
-  background: rgba(56,189,248,0.08); border-color: rgba(56,189,248,0.2);
-  color: var(--sky);
-}
-.ed-job-tag.red {
-  background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.2);
-  color: #f87171;
-}
-
-/* Right column: actions + stats */
-.ed-job-actions {
-  display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
-  flex-shrink: 0;
-}
-.ed-job-app-count {
-  text-align: center;
-  background: var(--surface-1); border: 1px solid var(--border-subtle);
-  border-radius: var(--r-lg); padding: 10px 14px;
-}
-.ed-job-app-num {
-  font-family: 'Fraunces', serif; font-size: 1.4rem; font-weight: 900;
-  color: var(--amber); line-height: 1; display: block;
-}
-.ed-job-app-label {
-  font-size: 0.67rem; color: var(--text-3); font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.8px;
-}
-
-.ed-job-btn-row { display: flex; gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
-.ed-job-btn {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 6px 13px; border-radius: var(--r-md);
-  font-family: 'Outfit', sans-serif; font-size: 0.77rem; font-weight: 600;
-  text-decoration: none; transition: var(--t); cursor: pointer;
-  border: 1px solid var(--border-subtle); background: transparent;
-  color: var(--text-2); white-space: nowrap;
-}
-.ed-job-btn:hover { background: var(--surface-1); color: var(--text-1); border-color: var(--border-strong); }
-.ed-job-btn.primary {
-  background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.25);
-  color: var(--amber);
-}
-.ed-job-btn.primary:hover { background: rgba(245,158,11,0.18); }
-.ed-job-btn.danger {
-  background: rgba(239,68,68,0.07); border-color: rgba(239,68,68,0.2);
-  color: #f87171;
-}
-.ed-job-btn.danger:hover { background: rgba(239,68,68,0.14); }
-
-/* Toggle status button */
-.ed-toggle-btn {
-  font-size: 0.72rem; font-weight: 700; padding: 4px 11px;
-  border-radius: var(--r-pill); border: none; cursor: pointer;
-  font-family: 'Outfit', sans-serif; transition: var(--t);
-}
-.ed-toggle-btn.active {
-  background: rgba(16,185,129,0.12); color: var(--emerald);
-  border: 1px solid rgba(16,185,129,0.25);
-}
-.ed-toggle-btn.active:hover { background: rgba(16,185,129,0.2); }
-.ed-toggle-btn.paused {
-  background: rgba(245,158,11,0.1); color: var(--amber);
-  border: 1px solid rgba(245,158,11,0.25);
-}
-.ed-toggle-btn.paused:hover { background: rgba(245,158,11,0.18); }
-
-/* Empty state */
-.ed-empty {
-  background: var(--bg-card); border: 1px dashed var(--border-strong);
-  border-radius: var(--r-xl); padding: 52px 32px; text-align: center;
-}
-.ed-empty-icon {
-  width: 64px; height: 64px; border-radius: 20px; margin: 0 auto 20px;
-  background: var(--surface-1); border: 1px solid var(--border-subtle);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 1.6rem; color: var(--amber);
-}
-.ed-empty-title {
-  font-family: 'Fraunces', serif; font-size: 1.15rem; font-weight: 800;
-  color: var(--text-1); margin-bottom: 8px;
-}
-.ed-empty-sub {
-  font-size: 0.88rem; color: var(--text-3); margin-bottom: 24px; line-height: 1.65;
-}
-
-/* ── PENDING APPLICATIONS (sidebar) ── */
-.ed-app-list { display: flex; flex-direction: column; gap: 10px; }
-.ed-app-card {
-  background: var(--bg-card); border: 1px solid var(--border-subtle);
-  border-radius: var(--r-xl); padding: 16px 18px; transition: var(--t);
-}
-.ed-app-card:hover { border-color: var(--border-strong); transform: translateY(-1px); }
-
-.ed-app-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.ed-app-avatar {
-  width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
-  background: linear-gradient(135deg, var(--amber-dark), var(--orange));
-  display: flex; align-items: center; justify-content: center;
-  font-family: 'Fraunces', serif; font-weight: 800; font-size: 0.9rem;
-  color: #0C0A08;
-}
-.ed-app-name { font-size: 0.88rem; font-weight: 700; color: var(--text-1); margin-bottom: 1px; }
-.ed-app-time { font-size: 0.72rem; color: var(--text-3); }
-.ed-app-score {
-  margin-left: auto; flex-shrink: 0;
-  font-family: 'Fraunces', serif; font-size: 0.95rem; font-weight: 900;
-  color: var(--amber);
-}
-.ed-app-score span { font-family: 'Outfit', sans-serif; font-size: 0.65rem; color: var(--text-3); font-weight: 500; }
-
-.ed-app-job {
-  font-size: 0.78rem; color: var(--text-2); margin-bottom: 10px;
-  display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.ed-app-job i { font-size: 0.65rem; color: var(--text-3); margin-right: 4px; }
+.epd-hero::after {
+  content: '';
+  display: block;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(245,158,11,0.2) 30%, rgba(245,158,11,0.2) 70%, transparent 100%);
+  margin-top: 0;
+}
 
-.ed-app-actions { display: flex; gap: 6px; }
-.ed-app-btn {
-  flex: 1; padding: 6px; border-radius: var(--r-md);
-  font-family: 'Outfit', sans-serif; font-size: 0.73rem; font-weight: 700;
-  text-decoration: none; text-align: center; transition: var(--t);
-  border: 1px solid var(--border-subtle); cursor: pointer; background: transparent;
+/* Decorative orb */
+.epd-hero-orb {
+  position: absolute;
+  top: -100px; right: -80px;
+  width: 480px; height: 480px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(245,158,11,0.07) 0%, transparent 65%);
+  pointer-events: none;
+  filter: blur(30px);
+}
+
+.epd-hero-inner {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 28px;
+  align-items: center;
+  padding-bottom: 40px;
+}
+
+/* Company logo */
+.epd-logo {
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  background: rgba(20,16,10,0.8);
+  border: 1px solid rgba(245,158,11,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.9rem;
+  color: var(--amber);
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.5),
+              inset 0 1px 0 rgba(245,158,11,0.12);
+}
+.epd-logo img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+
+/* Company info */
+.epd-company-info {}
+.epd-eyebrow {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--amber);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  opacity: 0.9;
+}
+.epd-eyebrow::before {
+  content: '';
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: var(--amber);
+  border-radius: 2px;
+}
+.epd-company-name {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(1.5rem, 3.5vw, 2.2rem);
+  font-weight: 900;
+  color: var(--text-1);
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+  margin-bottom: 12px;
+}
+.epd-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.epd-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 11px;
+  border-radius: var(--r-pill);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.epd-chip-verified {
+  background: rgba(16,185,129,0.12);
+  border: 1px solid rgba(16,185,129,0.28);
+  color: #34d399;
+}
+.epd-chip-default {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.09);
   color: var(--text-2);
 }
-.ed-app-btn:hover { background: var(--surface-1); color: var(--text-1); }
-.ed-app-btn.amber {
-  background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.25);
+.epd-chip i { font-size: 0.6rem; }
+
+/* Hero actions */
+.epd-hero-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+.epd-actions-primary {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.epd-actions-secondary {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Buttons */
+.epd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 22px;
+  border-radius: var(--r-md);
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: var(--t);
+  white-space: nowrap;
+  cursor: pointer;
+  border: none;
+}
+.epd-btn-solid {
+  background: linear-gradient(135deg, var(--amber) 0%, var(--orange) 100%);
+  color: #0C0A08;
+  box-shadow: 0 4px 18px rgba(245,158,11,0.3);
+}
+.epd-btn-solid:hover {
+  box-shadow: 0 6px 24px rgba(245,158,11,0.45);
+  transform: translateY(-2px);
+  color: #0C0A08;
+}
+.epd-btn-outline {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: var(--text-2);
+  backdrop-filter: blur(8px);
+}
+.epd-btn-outline:hover {
+  background: rgba(255,255,255,0.07);
+  border-color: rgba(255,255,255,0.2);
+  color: var(--text-1);
+  transform: translateY(-1px);
+}
+.epd-btn-amber-outline {
+  background: rgba(245,158,11,0.06);
+  border: 1px solid rgba(245,158,11,0.25);
+  color: var(--amber);
+  backdrop-filter: blur(8px);
+}
+.epd-btn-amber-outline:hover {
+  background: rgba(245,158,11,0.14);
+  transform: translateY(-1px);
   color: var(--amber);
 }
-.ed-app-btn.amber:hover { background: rgba(245,158,11,0.18); }
-
-.ed-apps-empty {
-  background: var(--bg-card); border: 1px solid var(--border-subtle);
-  border-radius: var(--r-xl); padding: 32px 20px; text-align: center;
-  color: var(--text-3); font-size: 0.88rem;
+.epd-btn-sm {
+  padding: 8px 14px;
+  font-size: 0.78rem;
+  gap: 6px;
 }
-.ed-apps-empty i { font-size: 1.6rem; color: var(--border-strong); display: block; margin-bottom: 10px; }
 
-/* ── SIDEBAR CARDS ── */
-.ed-sidebar { display: flex; flex-direction: column; gap: 18px; }
-
-.ed-info-card {
-  background: var(--bg-card); border: 1px solid var(--border-subtle);
-  border-radius: var(--r-xl); padding: 20px; overflow: hidden; position: relative;
+/* ── STATS ROW ────────────────────────────────────── */
+.epd-stats-section {
+  padding: 32px 0 0;
 }
-.ed-info-card::before {
+.epd-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+.epd-stat-card {
+  background: var(--bg-card);
+  border: 1px solid rgba(255,255,255,0.055);
+  border-radius: var(--r-xl);
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: relative;
+  overflow: hidden;
+  transition: var(--t);
+}
+.epd-stat-card::before {
   content: '';
-  position: absolute; inset: 0;
-  background: linear-gradient(135deg, rgba(245,158,11,0.04), transparent 70%);
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.025) 0%, transparent 60%);
   pointer-events: none;
 }
-.ed-info-card-title {
-  font-family: 'Fraunces', serif; font-size: 0.92rem; font-weight: 800;
-  color: var(--text-1); margin-bottom: 16px;
-  display: flex; align-items: center; gap: 8px;
+.epd-stat-card:hover {
+  border-color: rgba(245,158,11,0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 36px rgba(0,0,0,0.35);
 }
-.ed-info-card-title i { color: var(--amber); font-size: 0.8rem; }
 
-/* Quick links */
-.ed-quick-link {
-  display: flex; align-items: center; gap: 10px;
-  padding: 9px 10px; border-radius: var(--r-md);
-  text-decoration: none; color: var(--text-2);
-  font-size: 0.84rem; font-weight: 500; transition: var(--t);
-  margin-bottom: 3px;
+.epd-stat-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  flex-shrink: 0;
 }
-.ed-quick-link:last-child { margin-bottom: 0; }
-.ed-quick-link:hover { background: var(--surface-1); color: var(--text-1); }
-.ed-quick-link i { width: 16px; text-align: center; color: var(--text-3); font-size: 0.76rem; }
-.ed-quick-link:hover i { color: var(--amber); }
-.ed-quick-badge {
-  margin-left: auto; font-size: 0.7rem; font-weight: 700;
-  padding: 2px 8px; border-radius: var(--r-pill);
-  background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2);
+.si-amber  { background: rgba(245,158,11,0.12); color: var(--amber);   border: 1px solid rgba(245,158,11,0.22); }
+.si-green  { background: rgba(16,185,129,0.12); color: var(--emerald); border: 1px solid rgba(16,185,129,0.22); }
+.si-sky    { background: rgba(56,189,248,0.12); color: var(--sky);     border: 1px solid rgba(56,189,248,0.22); }
+.si-orange { background: rgba(249,115,22,0.12); color: var(--orange);  border: 1px solid rgba(249,115,22,0.22); }
+
+.epd-stat-body {}
+.epd-stat-num {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(1.6rem, 2.5vw, 2rem);
+  font-weight: 900;
+  color: var(--text-1);
+  line-height: 1;
+  letter-spacing: -0.5px;
+  display: block;
+  margin-bottom: 5px;
+}
+.epd-stat-label {
+  font-size: 0.78rem;
+  color: var(--text-3);
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}
+
+/* ── MAIN BODY ────────────────────────────────────── */
+.epd-body {
+  padding: 36px 0 96px;
+}
+.epd-layout {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 28px;
+  align-items: start;
+}
+
+/* ── SECTION CARD ────────────────────────────────── */
+.epd-card {
+  background: var(--bg-card);
+  border: 1px solid rgba(255,255,255,0.055);
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  position: relative;
+}
+.epd-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(255,255,255,0.055);
+}
+.epd-card-head-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+.epd-card-title {
+  font-family: 'Fraunces', serif;
+  font-size: 1rem;
+  font-weight: 900;
+  color: var(--text-1);
+}
+.epd-card-count {
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  background: rgba(245,158,11,0.12);
+  border: 1px solid rgba(245,158,11,0.25);
+  color: var(--amber);
+  margin-left: 4px;
+}
+.epd-card-action {
+  margin-left: auto;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-3);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: var(--t);
+  padding: 6px 12px;
+  border-radius: var(--r-md);
+}
+.epd-card-action:hover {
+  color: var(--amber);
+  background: rgba(245,158,11,0.07);
+}
+
+/* ── JOB LIST ────────────────────────────────────── */
+.epd-jobs-body {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.epd-job-row {
+  display: grid;
+  grid-template-columns: 4px 1fr auto;
+  gap: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  transition: var(--t);
+  position: relative;
+  background: transparent;
+}
+.epd-job-row:hover {
+  background: rgba(255,255,255,0.028);
+}
+
+/* Status stripe */
+.epd-job-stripe {
+  width: 4px;
+  flex-shrink: 0;
+  border-radius: 4px 0 0 4px;
+  transition: width 0.25s;
+  align-self: stretch;
+}
+.epd-job-row:hover .epd-job-stripe { width: 5px; }
+.stripe-active  { background: var(--emerald); box-shadow: 0 0 8px rgba(16,185,129,0.4); }
+.stripe-paused  { background: var(--amber); }
+.stripe-draft   { background: rgba(255,255,255,0.18); }
+.stripe-filled  { background: var(--sky); box-shadow: 0 0 8px rgba(56,189,248,0.3); }
+.stripe-closed,
+.stripe-expired { background: rgba(239,68,68,0.6); }
+
+.epd-job-content {
+  padding: 18px 16px 18px 20px;
+  min-width: 0;
+}
+.epd-job-title-link {
+  font-family: 'Fraunces', serif;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--text-1);
+  text-decoration: none;
+  transition: var(--t);
+  display: inline-block;
+  margin-bottom: 6px;
+  line-height: 1.25;
+}
+.epd-job-title-link:hover { color: var(--amber); }
+
+.epd-job-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.78rem;
+  color: var(--text-3);
+  font-weight: 500;
+  margin-bottom: 10px;
+}
+.epd-job-meta span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.epd-job-meta i { font-size: 0.65rem; color: var(--text-2); }
+
+.epd-job-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.epd-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.epd-tag-default { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: var(--text-2); }
+.epd-tag-green   { background: rgba(16,185,129,0.1);  border: 1px solid rgba(16,185,129,0.22); color: #34d399; }
+.epd-tag-amber   { background: rgba(245,158,11,0.1);  border: 1px solid rgba(245,158,11,0.22); color: #fcd34d; }
+.epd-tag-sky     { background: rgba(56,189,248,0.1);  border: 1px solid rgba(56,189,248,0.22); color: #7dd3fc; }
+.epd-tag-red     { background: rgba(239,68,68,0.1);   border: 1px solid rgba(239,68,68,0.22);  color: #fca5a5; }
+.epd-tag i { font-size: 0.55rem; }
+
+/* Right column — actions */
+.epd-job-side {
+  padding: 18px 18px 18px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.epd-app-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  padding: 10px 16px;
+  min-width: 64px;
+}
+.epd-app-num {
+  font-family: 'Fraunces', serif;
+  font-size: 1.45rem;
+  font-weight: 900;
+  color: var(--amber);
+  line-height: 1;
+  margin-bottom: 2px;
+}
+.epd-app-lbl {
+  font-size: 0.62rem;
+  color: var(--text-3);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.epd-job-btns {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.epd-jbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 13px;
+  border-radius: var(--r-md);
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: var(--t);
+  cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.025);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.epd-jbtn:hover { background: rgba(255,255,255,0.075); color: var(--text-1); border-color: rgba(255,255,255,0.18); transform: translateY(-1px); }
+.epd-jbtn-amber { background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.28); color: var(--amber); }
+.epd-jbtn-amber:hover { background: rgba(245,158,11,0.2); box-shadow: 0 4px 12px rgba(245,158,11,0.15); }
+.epd-jbtn-danger { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.22); color: #fca5a5; }
+.epd-jbtn-danger:hover { background: rgba(239,68,68,0.18); }
+.epd-jbtn-icon { padding: 7px 10px; }
+
+.epd-toggle-btn {
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 5px 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid;
+  cursor: pointer;
+  font-family: 'Outfit', sans-serif;
+  transition: var(--t);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.epd-toggle-active { background: rgba(16,185,129,0.1); color: #34d399; border-color: rgba(16,185,129,0.28); }
+.epd-toggle-active:hover { background: rgba(16,185,129,0.2); transform: translateY(-1px); }
+.epd-toggle-paused { background: rgba(245,158,11,0.1); color: #fcd34d; border-color: rgba(245,158,11,0.28); }
+.epd-toggle-paused:hover { background: rgba(245,158,11,0.2); transform: translateY(-1px); }
+
+/* Divider between jobs */
+.epd-jobs-body .epd-job-row + .epd-job-row {
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+
+/* Empty state */
+.epd-empty {
+  padding: 60px 32px;
+  text-align: center;
+}
+.epd-empty-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  margin: 0 auto 20px;
+  background: rgba(245,158,11,0.07);
+  border: 1px solid rgba(245,158,11,0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
   color: var(--amber);
 }
+.epd-empty-title {
+  font-family: 'Fraunces', serif;
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: var(--text-1);
+  margin-bottom: 10px;
+}
+.epd-empty-sub {
+  font-size: 0.88rem;
+  color: var(--text-3);
+  margin-bottom: 24px;
+  max-width: 360px;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.7;
+}
 
-/* Profile completeness nudge */
-.ed-nudge {
-  display: flex; align-items: flex-start; gap: 12px;
-  padding: 14px; border-radius: var(--r-lg);
-  background: rgba(56,189,248,0.05); border: 1px solid rgba(56,189,248,0.15);
+/* ── SIDEBAR ─────────────────────────────────────── */
+.epd-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
-.ed-nudge-icon {
-  width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0;
-  background: rgba(56,189,248,0.1); border: 1px solid rgba(56,189,248,0.2);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 0.78rem; color: var(--sky);
-}
-.ed-nudge-text { font-size: 0.79rem; color: var(--text-2); line-height: 1.6; }
-.ed-nudge-text a { color: var(--sky); text-decoration: none; font-weight: 600; }
-.ed-nudge-text a:hover { text-decoration: underline; }
 
-/* ── MESSAGES ── */
-.ed-messages {
-  position: fixed; top: calc(var(--nav-h) + 16px); right: 20px;
-  z-index: 3000; display: flex; flex-direction: column; gap: 10px;
-  max-width: 360px; pointer-events: none;
+/* ── APPLICATIONS LIST ───────────────────────────── */
+.epd-apps-list {
+  display: flex;
+  flex-direction: column;
 }
-.ed-msg {
-  padding: 13px 18px; border-radius: var(--r-lg);
-  font-size: 0.87rem; font-weight: 600;
-  display: flex; align-items: center; gap: 10px;
-  box-shadow: var(--shadow-md); pointer-events: all; cursor: pointer;
-  animation: edMsgSlide 0.35s var(--ease) both;
+.epd-app-item {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  transition: var(--t);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: start;
 }
-@keyframes edMsgSlide { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
-.ed-msg-success { background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.3); color: #6ee7b7; }
-.ed-msg-error   { background: rgba(239,68,68,0.15);  border: 1px solid rgba(239,68,68,0.3);  color: #fca5a5; }
-.ed-msg-info    { background: rgba(56,189,248,0.12); border: 1px solid rgba(56,189,248,0.25); color: var(--sky); }
+.epd-app-item:last-child { border-bottom: none; }
+.epd-app-item:hover { background: rgba(255,255,255,0.025); }
 
-/* ── RESPONSIVE ── */
-@media (max-width: 1024px) {
-  .ed-layout { grid-template-columns: 1fr; }
-  .ed-sidebar { order: -1; }
-  .ed-stats-inner { grid-template-columns: repeat(2, 1fr); }
-  .ed-stat { border-bottom: 1px solid var(--border-subtle); }
-  .ed-stat:nth-child(2) { border-right: none; }
-  .ed-stat:nth-child(3) { border-bottom: none; }
-  .ed-stat:last-child   { border-right: none; border-bottom: none; }
+.epd-app-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: linear-gradient(135deg, var(--amber-dark), var(--orange));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Fraunces', serif;
+  font-weight: 900;
+  font-size: 1rem;
+  color: #0C0A08;
+  flex-shrink: 0;
+  box-shadow: 0 3px 8px rgba(245,158,11,0.25);
+}
+.epd-app-info {}
+.epd-app-name {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--text-1);
+  margin-bottom: 2px;
+}
+.epd-app-job-title {
+  font-size: 0.75rem;
+  color: var(--text-3);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+.epd-app-time {
+  font-size: 0.7rem;
+  color: var(--text-3);
+  margin-top: 1px;
+}
+.epd-app-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.epd-match-score {
+  font-family: 'Fraunces', serif;
+  font-size: 0.9rem;
+  font-weight: 900;
+  color: var(--amber);
+}
+.epd-match-score span {
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.62rem;
+  color: var(--text-3);
+  font-weight: 600;
+}
+.epd-app-links {
+  display: flex;
+  gap: 5px;
+}
+.epd-app-link {
+  padding: 4px 10px;
+  border-radius: var(--r-md);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: var(--t);
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.025);
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.epd-app-link:hover { background: rgba(255,255,255,0.07); color: var(--text-1); }
+.epd-app-link.primary { background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.25); color: var(--amber); }
+.epd-app-link.primary:hover { background: rgba(245,158,11,0.2); }
+
+.epd-apps-empty {
+  padding: 36px 20px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 0.88rem;
+}
+.epd-apps-empty i { display: block; font-size: 1.6rem; margin-bottom: 10px; opacity: 0.3; }
+
+/* ── QUICK LINKS ─────────────────────────────────── */
+.epd-quick-links {
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.epd-quick-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-2);
+  transition: var(--t);
+}
+.epd-quick-link:hover {
+  background: rgba(255,255,255,0.045);
+  color: var(--text-1);
+  transform: translateX(3px);
+}
+.epd-quick-link i {
+  width: 18px;
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--text-3);
+  flex-shrink: 0;
+  transition: var(--t);
+}
+.epd-quick-link:hover i { color: var(--amber); }
+.epd-quick-badge {
+  margin-left: auto;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: rgba(245,158,11,0.15);
+  border: 1px solid rgba(245,158,11,0.28);
+  color: #fcd34d;
+}
+
+/* ── MILESTONES ──────────────────────────────────── */
+.epd-milestone-list {
+  display: flex;
+  flex-direction: column;
+}
+.epd-milestone-item {
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  transition: var(--t);
+}
+.epd-milestone-item:last-child { border-bottom: none; }
+.epd-milestone-item:hover { background: rgba(255,255,255,0.02); }
+.epd-milestone-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-1);
+  margin-bottom: 2px;
+}
+.epd-milestone-sub {
+  font-size: 0.72rem;
+  color: var(--text-3);
+  font-weight: 500;
+}
+.epd-milestone-amount {
+  font-family: 'Fraunces', serif;
+  font-size: 0.95rem;
+  font-weight: 900;
+  color: var(--amber);
+  text-align: right;
+  margin-bottom: 6px;
+}
+.epd-fund-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: var(--r-pill);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-decoration: none;
+  background: rgba(245,158,11,0.12);
+  border: 1px solid rgba(245,158,11,0.28);
+  color: var(--amber);
+  transition: var(--t);
+  white-space: nowrap;
+}
+.epd-fund-btn:hover { background: rgba(245,158,11,0.22); transform: translateY(-1px); color: var(--amber); }
+
+/* ── PROFILE NUDGE ───────────────────────────────── */
+.epd-nudge {
+  margin: 16px;
+  padding: 16px;
+  border-radius: var(--r-lg);
+  background: linear-gradient(135deg, rgba(56,189,248,0.07), rgba(56,189,248,0.02));
+  border: 1px solid rgba(56,189,248,0.18);
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.epd-nudge-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: rgba(56,189,248,0.12);
+  border: 1px solid rgba(56,189,248,0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  color: #7dd3fc;
+  flex-shrink: 0;
+}
+.epd-nudge-text {
+  font-size: 0.8rem;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+.epd-nudge-text strong { color: var(--text-1); }
+.epd-nudge-text a {
+  color: #7dd3fc;
+  text-decoration: none;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+.epd-nudge-text a:hover { text-decoration: underline; }
+
+/* ── AI CARD ─────────────────────────────────────── */
+.epd-ai-body {
+  padding: 16px 20px;
+}
+.epd-ai-body p {
+  font-size: 0.8rem;
+  color: var(--text-2);
+  line-height: 1.65;
+  margin-bottom: 14px;
+}
+.epd-ai-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--sky);
+  text-decoration: none;
+  transition: var(--t);
+}
+.epd-ai-link:hover { opacity: 0.75; }
+
+/* ── TOAST MESSAGES ──────────────────────────────── */
+.epd-toasts {
+  position: fixed;
+  top: calc(var(--nav-h) + 16px);
+  right: 20px;
+  z-index: 4000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 360px;
+  pointer-events: none;
+}
+.epd-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-radius: var(--r-lg);
+  font-size: 0.875rem;
+  font-weight: 600;
+  pointer-events: all;
+  cursor: pointer;
+  animation: toastIn 0.35s cubic-bezier(0.175,0.885,0.32,1.275) both;
+  backdrop-filter: blur(14px);
+}
+@keyframes toastIn { from { opacity:0; transform:translateX(20px) scale(0.96); } to { opacity:1; transform:translateX(0) scale(1); } }
+.epd-toast-success { background: rgba(16,185,129,0.18); border: 1px solid rgba(16,185,129,0.35); color: #6ee7b7; }
+.epd-toast-error   { background: rgba(239,68,68,0.18);  border: 1px solid rgba(239,68,68,0.35);  color: #fca5a5; }
+.epd-toast-info    { background: rgba(56,189,248,0.14); border: 1px solid rgba(56,189,248,0.3);  color: #7dd3fc; }
+
+/* ── RESPONSIVE ──────────────────────────────────── */
+@media (max-width: 1100px) {
+  .epd-hero-inner { grid-template-columns: auto 1fr; gap: 20px; }
+  .epd-hero-actions { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; }
+  .epd-layout { grid-template-columns: 1fr; }
+  .epd-sidebar { order: -1; display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .epd-stats-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 768px) {
-  .ed-hero { padding: 32px 0 28px; }
-  .ed-hero-inner { flex-direction: column; gap: 20px; }
-  .ed-hero-actions { width: 100%; }
-  .ed-btn-primary, .ed-btn-ghost { flex: 1; justify-content: center; }
-  .ed-job-card-inner { grid-template-columns: 1fr; }
-  .ed-job-actions { flex-direction: row; align-items: center; width: 100%; justify-content: space-between; }
-  .ed-job-app-count { display: flex; align-items: center; gap: 6px; padding: 6px 12px; }
-  .ed-job-app-num { font-size: 1rem; }
+  .epd-hero { padding: 36px 0 0; }
+  .epd-hero-inner { grid-template-columns: auto 1fr; }
+  .epd-logo { width: 60px; height: 60px; font-size: 1.5rem; border-radius: 16px; }
+  .epd-sidebar { grid-template-columns: 1fr; }
+  .epd-job-row { grid-template-columns: 4px 1fr; }
+  .epd-job-side { display: none; }
 }
 @media (max-width: 560px) {
-  .ed-stats-inner { grid-template-columns: repeat(2, 1fr); }
-  .ed-identity { flex-direction: row; }
-  .ed-logo { width: 56px; height: 56px; font-size: 1.4rem; }
-  .ed-company-name { font-size: 1.25rem; }
-  .ed-messages { right: 10px; left: 10px; max-width: none; }
-  .ed-body { padding: 28px 0 56px; }
-}
-@media (max-width: 380px) {
-  .ed-hero-actions { flex-direction: column; }
-  .ed-btn-primary, .ed-btn-ghost { width: 100%; justify-content: center; }
-  .ed-job-meta { gap: 8px; font-size: 0.76rem; }
+  .epd-stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .epd-hero-inner { grid-template-columns: 1fr; }
+  .epd-logo { display: none; }
+  .epd-actions-primary, .epd-actions-secondary { gap: 6px; }
+  .epd-btn { padding: 10px 16px; font-size: 0.8rem; }
+  .epd-toasts { right: 12px; left: 12px; max-width: none; }
 }
 </style>
 {% endblock %}
@@ -477,11 +897,11 @@
 
 {% block content %}
 
-{# ── Floating messages ── #}
+{# ── Toasts ── #}
 {% if messages %}
-<div class="ed-messages">
+<div class="epd-toasts" id="epd-toasts">
   {% for message in messages %}
-  <div class="ed-msg ed-msg-{{ message.tags }}" onclick="this.remove()">
+  <div class="epd-toast epd-toast-{{ message.tags }}" onclick="this.remove()">
     {% if 'success' in message.tags %}<i class="fas fa-circle-check"></i>
     {% elif 'error' in message.tags %}<i class="fas fa-circle-exclamation"></i>
     {% else %}<i class="fas fa-circle-info"></i>{% endif %}
@@ -491,122 +911,117 @@
 </div>
 {% endif %}
 
-<div class="ed-page">
+<div class="epd">
 
   {# ── HERO ── #}
-  <section class="ed-hero">
+  <section class="epd-hero">
+    <div class="epd-hero-orb"></div>
     <div class="container">
-      <div class="ed-hero-inner">
+      <div class="epd-hero-inner">
 
-        {# Company identity #}
-        <div class="ed-identity fade-up">
-          <div class="ed-logo">
-            {% if employer.logo %}
-              <img src="{{ employer.logo.url }}" alt="{{ employer.company_name }}">
-            {% else %}
-              <i class="fas fa-building" style="color:var(--amber);"></i>
-            {% endif %}
+        {# Logo #}
+        <div class="epd-logo" aria-hidden="true">
+          {% if employer.logo %}
+            <img src="{{ employer.logo.url }}" alt="{{ employer.company_name }}">
+          {% else %}
+            <i class="fas fa-building"></i>
+          {% endif %}
+        </div>
+
+        {# Company info #}
+        <div class="epd-company-info">
+          <div class="epd-eyebrow">
+            <i class="fas fa-gauge-high" style="font-size:0.6rem;"></i>
+            Employer Dashboard
           </div>
-          <div>
-            <div class="ed-greeting">
-              <i class="fas fa-gauge-high" style="font-size:0.7rem;"></i>
-              Employer Dashboard
-            </div>
-            <div class="ed-company-name">
-              {{ employer.company_name|default:request.user.get_full_name|default:request.user.username }}
-            </div>
-            <div class="ed-badges">
-              {% if employer.is_verified %}
-              <span class="ed-badge ed-badge-verified">
-                <i class="fas fa-circle-check"></i> Verified
-              </span>
-              {% endif %}
-              <span class="ed-badge ed-badge-type">
-                {{ employer.get_company_type_display }}
-              </span>
-              {% if employer.industry %}
-              <span class="ed-badge ed-badge-type">
-                {{ employer.industry }}
-              </span>
-              {% endif %}
-              {% if employer.state %}
-              <span class="ed-badge ed-badge-type">
-                <i class="fas fa-location-dot" style="font-size:0.65rem;"></i>
-                {{ employer.get_state_display }}
-              </span>
-              {% endif %}
-            </div>
+          <h1 class="epd-company-name">
+            {{ employer.company_name|default:request.user.get_full_name|default:request.user.username }}
+          </h1>
+          <div class="epd-meta-row">
+            {% if verification_profile %}
+              {% include "verification/includes/_verification_badge.html" with vp=verification_profile %}
+            {% endif %}
+            {% if employer.is_verified %}
+            <span class="epd-chip epd-chip-verified">
+              <i class="fas fa-circle-check"></i> Verified
+            </span>
+            {% endif %}
+            <span class="epd-chip epd-chip-default">{{ employer.get_company_type_display }}</span>
+            {% if employer.industry %}
+            <span class="epd-chip epd-chip-default">{{ employer.industry }}</span>
+            {% endif %}
+            {% if employer.state %}
+            <span class="epd-chip epd-chip-default">
+              <i class="fas fa-location-dot"></i> {{ employer.get_state_display }}
+            </span>
+            {% endif %}
           </div>
         </div>
 
-        {# CTAs #}
-        <div class="ed-hero-actions fade-up d1">
-          <a href="{% url 'marketplace:job_create' %}" class="ed-btn-primary">
-            <i class="fas fa-plus"></i> Post a Job
-          </a>
-          <a href="{% url 'marketplace:employer_profile_edit' %}" class="ed-btn-ghost">
-            <i class="fas fa-pen-to-square"></i> Edit Profile
-          </a>
+        {# Actions #}
+        <div class="epd-hero-actions">
+          <div class="epd-actions-primary">
+            <a href="{% url 'marketplace:job_create' %}" class="epd-btn epd-btn-solid" id="btn-post-job">
+              <i class="fas fa-plus"></i> Post a Job
+            </a>
+            <a href="{% url 'marketplace:employer_profile_edit' %}" class="epd-btn epd-btn-outline" id="btn-edit-profile">
+              <i class="fas fa-pen-to-square"></i> Edit Profile
+            </a>
+          </div>
+          <div class="epd-actions-secondary">
+            {% if has_worker_profile %}
+            <a href="{% url 'marketplace:worker_dashboard' %}" class="epd-btn epd-btn-amber-outline epd-btn-sm" title="Switch to Worker dashboard">
+              <i class="fas fa-hard-hat"></i> Worker View
+            </a>
+            <a href="{% url 'mktplace:seller_dashboard' %}" class="epd-btn epd-btn-outline epd-btn-sm" title="Seller dashboard">
+              <i class="fas fa-store"></i> Seller
+            </a>
+            {% endif %}
+            <a href="{% url 'mktplace:order_list' %}" class="epd-btn epd-btn-outline epd-btn-sm" title="My purchases">
+              <i class="fas fa-shopping-bag"></i> Purchases
+            </a>
+          </div>
         </div>
 
       </div>
     </div>
   </section>
 
-  {# ── STATS BAND ── #}
-  <div class="ed-stats-band">
+  {# ── STATS ── #}
+  <div class="epd-stats-section">
     <div class="container">
-      <div class="ed-stats-inner">
+      <div class="epd-stats-grid">
 
-        {# Total jobs #}
-        <div class="ed-stat">
-          <div class="ed-stat-number">{{ jobs|length }}</div>
-          <div class="ed-stat-label">Total Jobs</div>
-          <div class="ed-stat-sub">All time</div>
+        <div class="epd-stat-card">
+          <div class="epd-stat-icon si-amber"><i class="fas fa-briefcase"></i></div>
+          <div class="epd-stat-body">
+            <span class="epd-stat-num" id="js-stat-total">{{ jobs|length }}</span>
+            <div class="epd-stat-label">Total Jobs Posted</div>
+          </div>
         </div>
 
-        {# Active jobs #}
-        <div class="ed-stat">
-          <div class="ed-stat-number">
-            {% with active=jobs|dictsortreversed:"status" %}
-            {{ jobs.all|length }}
-            {% endwith %}
-            {# Count active jobs inline #}
-            {% with count=0 %}
-              {% for job in jobs %}{% if job.status == 'active' %}
-                {% with count=count|add:1 %}{% endwith %}
-              {% endif %}{% endfor %}
-            {% endwith %}
-            {{ jobs|length }}
+        <div class="epd-stat-card">
+          <div class="epd-stat-icon si-green"><i class="fas fa-circle-check"></i></div>
+          <div class="epd-stat-body">
+            <span class="epd-stat-num" id="js-stat-active">–</span>
+            <div class="epd-stat-label">Active Listings</div>
           </div>
-          {# Simpler active count via template tag iteration #}
-          <div class="ed-stat-number" id="activeJobCount">
-            {% with ac=0 %}
-              {% for job in jobs %}{% if job.status == 'active' %}{% with ac=ac|add:"1" %}{% endwith %}{% endif %}{% endfor %}
-              {# fallback: show from annotated queryset #}
-            {% endwith %}
-          </div>
-          <div class="ed-stat-label">Active Listings</div>
-          <div class="ed-stat-sub">Currently live</div>
         </div>
 
-        {# Pending applications #}
-        <div class="ed-stat">
-          <div class="ed-stat-number">{{ recent_apps|length }}</div>
-          <div class="ed-stat-label">Pending Review</div>
-          <div class="ed-stat-sub">Awaiting response</div>
+        <div class="epd-stat-card">
+          <div class="epd-stat-icon si-sky"><i class="fas fa-inbox"></i></div>
+          <div class="epd-stat-body">
+            <span class="epd-stat-num">{{ recent_apps|length }}</span>
+            <div class="epd-stat-label">Pending Review</div>
+          </div>
         </div>
 
-        {# Total applications across all jobs #}
-        <div class="ed-stat">
-          <div class="ed-stat-number">
-            {% with total=0 %}
-              {% for job in jobs %}{% with total=total|add:job.app_count %}{% endwith %}{% endfor %}
-              {% for job in jobs %}{{ job.applications_count|add:0 }}{% endfor %}
-            {% endwith %}
+        <div class="epd-stat-card">
+          <div class="epd-stat-icon si-orange"><i class="fas fa-users"></i></div>
+          <div class="epd-stat-body">
+            <span class="epd-stat-num" id="js-stat-apps">–</span>
+            <div class="epd-stat-label">Total Applications</div>
           </div>
-          <div class="ed-stat-label">Total Applications</div>
-          <div class="ed-stat-sub">Across all jobs</div>
         </div>
 
       </div>
@@ -614,36 +1029,47 @@
   </div>
 
   {# ── BODY ── #}
-  <section class="ed-body">
+  <div class="epd-body">
     <div class="container">
-      <div class="ed-layout">
+      <div class="epd-layout">
 
-        {# ── LEFT COLUMN — Job Listings ── #}
-        <div>
+        {# ── LEFT — Job Listings ── #}
+        <div class="epd-main-col">
 
-          <div class="ed-section-head">
-            <i class="fas fa-briefcase"></i> Your Job Listings
+          <div class="epd-card">
+            <div class="epd-card-head">
+              <div class="epd-card-head-icon si-amber">
+                <i class="fas fa-briefcase"></i>
+              </div>
+              <span class="epd-card-title">Your Job Listings</span>
+              {% if jobs %}
+              <span class="epd-card-count">{{ jobs|length }}</span>
+              {% endif %}
+              <a href="{% url 'marketplace:job_create' %}" class="epd-card-action" id="link-post-new">
+                <i class="fas fa-plus"></i> Post New
+              </a>
+            </div>
+
             {% if jobs %}
-            <span class="ed-section-count">{{ jobs|length }}</span>
-            {% endif %}
-            <a href="{% url 'marketplace:job_create' %}" class="ed-section-link" style="margin-left:auto;">
-              <i class="fas fa-plus"></i> Post New
-            </a>
-          </div>
+            <div class="epd-jobs-body" id="epd-jobs-body">
+              {% for job in jobs %}
+              <div class="epd-job-row" data-status="{{ job.status }}" data-job-id="{{ job.pk }}">
+                {# Status stripe #}
+                <div class="epd-job-stripe
+                  {% if job.status == 'active' %}stripe-active
+                  {% elif job.status == 'paused' %}stripe-paused
+                  {% elif job.status == 'draft' %}stripe-draft
+                  {% elif job.status == 'filled' %}stripe-filled
+                  {% elif job.status == 'expired' %}stripe-expired
+                  {% else %}stripe-closed{% endif %}"></div>
 
-          {% if jobs %}
-          <div class="ed-jobs-list">
-            {% for job in jobs %}
-            <div class="ed-job-card fade-up" data-status="{{ job.status }}" data-job-id="{{ job.pk }}">
-              <div class="ed-job-card-inner">
-
-                {# Left: job details #}
-                <div>
-                  <a href="{% url 'marketplace:job_detail' pk=job.pk %}" class="ed-job-title">
+                {# Content #}
+                <div class="epd-job-content">
+                  <a href="{% url 'marketplace:job_detail' pk=job.pk %}" class="epd-job-title-link">
                     {{ job.title }}
                   </a>
 
-                  <div class="ed-job-meta">
+                  <div class="epd-job-meta">
                     {% if job.state %}
                     <span><i class="fas fa-location-dot"></i>{{ job.get_state_display }}{% if job.lga %}, {{ job.lga }}{% endif %}</span>
                     {% endif %}
@@ -651,11 +1077,9 @@
                     {% if job.pay_min or job.pay_max %}
                     <span>
                       <i class="fas fa-naira-sign"></i>
-                      {% if job.pay_min and job.pay_max %}
-                        ₦{{ job.pay_min|floatformat:0 }} – ₦{{ job.pay_max|floatformat:0 }}
+                      {% if job.pay_min and job.pay_max %}₦{{ job.pay_min|floatformat:0 }} – ₦{{ job.pay_max|floatformat:0 }}
                       {% elif job.pay_min %}From ₦{{ job.pay_min|floatformat:0 }}
-                      {% else %}Up to ₦{{ job.pay_max|floatformat:0 }}
-                      {% endif %}
+                      {% else %}Up to ₦{{ job.pay_max|floatformat:0 }}{% endif %}
                     </span>
                     {% endif %}
                     <span><i class="fas fa-eye"></i>{{ job.views_count }} view{{ job.views_count|pluralize }}</span>
@@ -665,318 +1089,352 @@
                     {% endif %}
                   </div>
 
-                  <div class="ed-job-tags">
+                  <div class="epd-job-tags">
                     {# Status badge #}
                     {% if job.status == 'active' %}
-                      <span class="ed-job-tag green"><i class="fas fa-circle" style="font-size:0.45rem;"></i> Active</span>
+                      <span class="epd-tag epd-tag-green"><i class="fas fa-circle"></i> Active</span>
                     {% elif job.status == 'paused' %}
-                      <span class="ed-job-tag amber"><i class="fas fa-pause" style="font-size:0.55rem;"></i> Paused</span>
+                      <span class="epd-tag epd-tag-amber"><i class="fas fa-pause"></i> Paused</span>
                     {% elif job.status == 'draft' %}
-                      <span class="ed-job-tag"><i class="fas fa-pen" style="font-size:0.55rem;"></i> Draft</span>
+                      <span class="epd-tag epd-tag-default"><i class="fas fa-pen"></i> Draft</span>
                     {% elif job.status == 'filled' %}
-                      <span class="ed-job-tag sky"><i class="fas fa-check" style="font-size:0.55rem;"></i> Filled</span>
+                      <span class="epd-tag epd-tag-sky"><i class="fas fa-check"></i> Filled</span>
                     {% elif job.status == 'expired' %}
-                      <span class="ed-job-tag red"><i class="fas fa-clock" style="font-size:0.55rem;"></i> Expired</span>
+                      <span class="epd-tag epd-tag-red"><i class="fas fa-clock"></i> Expired</span>
                     {% else %}
-                      <span class="ed-job-tag red">{{ job.get_status_display }}</span>
+                      <span class="epd-tag epd-tag-red">{{ job.get_status_display }}</span>
                     {% endif %}
 
                     {% if job.trade_category %}
-                    <span class="ed-job-tag amber">{{ job.trade_category.name }}</span>
+                    <span class="epd-tag epd-tag-amber">{{ job.trade_category.name }}</span>
                     {% endif %}
 
                     {% if job.slots > 1 %}
-                    <span class="ed-job-tag">{{ job.slots }} slots</span>
+                    <span class="epd-tag epd-tag-default">{{ job.slots }} slots</span>
                     {% endif %}
 
                     {% if job.is_remote %}
-                    <span class="ed-job-tag sky"><i class="fas fa-wifi" style="font-size:0.55rem;"></i> Remote</span>
+                    <span class="epd-tag epd-tag-sky"><i class="fas fa-wifi"></i> Remote</span>
                     {% endif %}
+
+                    {# Mobile: inline app count #}
+                    <span class="epd-tag epd-tag-default" style="display:none;" data-mobile-apps>
+                      <i class="fas fa-users"></i> {{ job.app_count }} app{{ job.app_count|pluralize }}
+                    </span>
                   </div>
                 </div>
 
-                {# Right: stats + actions #}
-                <div class="ed-job-actions">
-                  {# Application count pill #}
-                  <div class="ed-job-app-count">
-                    <span class="ed-job-app-num">{{ job.app_count }}</span>
-                    <span class="ed-job-app-label">Application{{ job.app_count|pluralize }}</span>
+                {# Side — desktop only #}
+                <div class="epd-job-side">
+                  <div class="epd-app-pill" title="{{ job.app_count }} application{{ job.app_count|pluralize }}">
+                    <span class="epd-app-num">{{ job.app_count }}</span>
+                    <span class="epd-app-lbl">App{{ job.app_count|pluralize }}</span>
                   </div>
 
-                  {# Action buttons #}
-                  <div class="ed-job-btn-row">
+                  <div class="epd-job-btns">
                     {% if job.app_count > 0 %}
-                    <a href="{% url 'marketplace:job_applications' pk=job.pk %}"
-                       class="ed-job-btn primary">
+                    <a href="{% url 'marketplace:job_applications' pk=job.pk %}" class="epd-jbtn epd-jbtn-amber">
                       <i class="fas fa-users"></i> Review
                     </a>
                     {% endif %}
 
-                    <a href="{% url 'marketplace:job_matches' pk=job.pk %}"
-                       class="ed-job-btn" title="View AI-matched workers">
+                    <a href="{% url 'marketplace:job_matches' pk=job.pk %}" class="epd-jbtn" title="AI-matched workers">
                       <i class="fas fa-brain"></i> Matches
                     </a>
 
-                    <a href="{% url 'marketplace:job_edit' pk=job.pk %}"
-                       class="ed-job-btn">
-                      <i class="fas fa-pen"></i> Edit
+                    <a href="{% url 'marketplace:job_edit' pk=job.pk %}" class="epd-jbtn epd-jbtn-icon" title="Edit">
+                      <i class="fas fa-pen"></i>
                     </a>
 
-                    {# Toggle Active / Paused (AJAX) #}
                     {% if job.status == 'active' or job.status == 'paused' %}
                     <button
-                      class="ed-toggle-btn {% if job.status == 'active' %}active{% else %}paused{% endif %}"
+                      class="epd-toggle-btn {% if job.status == 'active' %}epd-toggle-active{% else %}epd-toggle-paused{% endif %}"
                       data-toggle-url="{% url 'marketplace:job_toggle_status' pk=job.pk %}"
-                      onclick="toggleJobStatus(this)"
-                      title="{% if job.status == 'active' %}Pause this job{% else %}Reactivate this job{% endif %}"
+                      onclick="epd_toggleJob(this)"
+                      title="{% if job.status == 'active' %}Pause this job{% else %}Reactivate{% endif %}"
                     >
                       {% if job.status == 'active' %}
-                        <i class="fas fa-pause" style="font-size:0.6rem;"></i> Pause
+                        <i class="fas fa-pause" style="font-size:0.55rem;"></i> Pause
                       {% else %}
-                        <i class="fas fa-play" style="font-size:0.6rem;"></i> Activate
+                        <i class="fas fa-play" style="font-size:0.55rem;"></i> Activate
                       {% endif %}
                     </button>
                     {% endif %}
 
-                    {# Delete (with confirm) #}
                     <form method="POST"
                           action="{% url 'marketplace:job_delete' pk=job.pk %}"
                           style="display:inline;"
                           onsubmit="return confirm('Delete \'{{ job.title|escapejs }}\'? This cannot be undone.');">
                       {% csrf_token %}
-                      <button type="submit" class="ed-job-btn danger" title="Delete job">
+                      <button type="submit" class="epd-jbtn epd-jbtn-danger epd-jbtn-icon" title="Delete job">
                         <i class="fas fa-trash-can"></i>
                       </button>
                     </form>
                   </div>
                 </div>
 
-              </div>{# /card-inner #}
-            </div>{# /job-card #}
-            {% endfor %}
-          </div>
-
-          {% else %}
-          {# Empty state #}
-          <div class="ed-empty fade-up">
-            <div class="ed-empty-icon"><i class="fas fa-briefcase"></i></div>
-            <div class="ed-empty-title">No jobs posted yet</div>
-            <div class="ed-empty-sub">
-              Post your first job listing and our AI will start matching you with
-              the best skilled workers in Nigeria within minutes.
-            </div>
-            <a href="{% url 'marketplace:job_create' %}" class="ed-btn-primary" style="display:inline-flex;">
-              <i class="fas fa-plus"></i> Post Your First Job
-            </a>
-          </div>
-          {% endif %}
-
-        </div>{# /left column #}
-
-        {# ── RIGHT SIDEBAR ── #}
-        <div class="ed-sidebar">
-
-          {# Milestones awaiting payment #}
-          {% if pending_milestones %}
-          <div class="ed-info-card fade-up" style="border-color:rgba(245,158,11,0.25); background:rgba(245,158,11,0.04);">
-            <div class="ed-section-head" style="margin-bottom:14px;">
-              <i class="fas fa-triangle-exclamation"></i> Awaiting Payment
-              <span class="ed-section-count">{{ pending_milestones_total }}</span>
-            </div>
-            <div class="ed-app-list">
-              {% for milestone in pending_milestones %}
-              <div class="ed-app-card fade-up">
-                <div style="min-width:0;flex:1;">
-                  <div class="ed-app-name">{{ milestone.title }}</div>
-                  <div class="ed-app-time">
-                    {{ milestone.contract.title|truncatechars:32 }} ·
-                    {{ milestone.contract.worker.user.get_full_name|default:milestone.contract.worker.user.username }}
-                  </div>
-                </div>
-                <div class="ed-app-score" style="background:rgba(245,158,11,0.12); color:var(--amber);">
-                  ₦{{ milestone.amount|floatformat:0 }}
-                </div>
-              </div>
-              <div class="ed-app-actions" style="margin-top:-4px; margin-bottom:8px;">
-                <a href="{% url 'marketplace:contract_detail' pk=milestone.contract.pk %}#milestone-{{ milestone.pk }}"
-                   class="ed-app-btn amber">
-                  <i class="fas fa-lock" style="font-size:0.68rem;"></i> Fund Escrow
-                </a>
-              </div>
-              {% endfor %}
-            </div>
-            {% if pending_milestones_total > pending_milestones|length %}
-            <a href="{% url 'marketplace:contract_list' %}" class="ed-quick-link" style="margin-top:8px;">
-              <i class="fas fa-arrow-right"></i> View all {{ pending_milestones_total }} pending
-            </a>
-            {% endif %}
-          </div>
-          {% endif %}
-
-          {# Pending Applications #}
-          <div>
-            <div class="ed-section-head">
-              <i class="fas fa-inbox"></i> Pending Applications
-              {% if recent_apps %}
-              <span class="ed-section-count">{{ recent_apps|length }}</span>
-              {% endif %}
-            </div>
-
-            {% if recent_apps %}
-            <div class="ed-app-list">
-              {% for app in recent_apps %}
-              <div class="ed-app-card fade-up">
-                <div class="ed-app-header">
-                  <div class="ed-app-avatar">
-                    {{ app.worker.user.get_full_name|default:app.worker.user.username|slice:":1"|upper }}
-                  </div>
-                  <div style="min-width:0;flex:1;">
-                    <div class="ed-app-name">
-                      {{ app.worker.user.get_full_name|default:app.worker.user.username }}
-                    </div>
-                    <div class="ed-app-time">{{ app.applied_at|timesince }} ago</div>
-                  </div>
-                  {% if app.clip_match_score %}
-                  <div class="ed-app-score">
-                    {{ app.clip_match_score|floatformat:0 }}<span>% match</span>
-                  </div>
-                  {% endif %}
-                </div>
-
-                <div class="ed-app-job">
-                  <i class="fas fa-briefcase"></i>{{ app.job.title }}
-                </div>
-
-                <div class="ed-app-actions">
-                  <a href="{% url 'marketplace:job_applications' pk=app.job.pk %}"
-                     class="ed-app-btn amber">
-                    <i class="fas fa-eye" style="font-size:0.68rem;"></i> Review
-                  </a>
-                  <a href="{% url 'marketplace:worker_profile_public' pk=app.worker.pk %}"
-                     class="ed-app-btn">
-                    <i class="fas fa-user" style="font-size:0.68rem;"></i> Profile
-                  </a>
-                </div>
-              </div>
+              </div>{# /job-row #}
               {% endfor %}
             </div>
 
             {% else %}
-            <div class="ed-apps-empty fade-up">
+            <div class="epd-empty">
+              <div class="epd-empty-icon"><i class="fas fa-briefcase"></i></div>
+              <div class="epd-empty-title">No jobs posted yet</div>
+              <div class="epd-empty-sub">
+                Post your first job and our AI will match you with the best skilled
+                workers in Nigeria within minutes.
+              </div>
+              <a href="{% url 'marketplace:job_create' %}" class="epd-btn epd-btn-solid" style="display:inline-flex;">
+                <i class="fas fa-plus"></i> Post Your First Job
+              </a>
+            </div>
+            {% endif %}
+
+          </div>{# /card #}
+
+        </div>{# /main-col #}
+
+        {# ── RIGHT SIDEBAR ── #}
+        <div class="epd-sidebar">
+
+          {# ── Milestones awaiting payment ── #}
+          {% if pending_milestones %}
+          <div class="epd-card" style="border-color:rgba(245,158,11,0.2);">
+            <div class="epd-card-head" style="border-color:rgba(245,158,11,0.15);">
+              <div class="epd-card-head-icon si-amber">
+                <i class="fas fa-triangle-exclamation"></i>
+              </div>
+              <span class="epd-card-title" style="color:var(--amber);">Awaiting Payment</span>
+              <span class="epd-card-count">{{ pending_milestones_total }}</span>
+              {% if pending_milestones_total > pending_milestones|length %}
+              <a href="{% url 'marketplace:contract_list' %}" class="epd-card-action">View all</a>
+              {% endif %}
+            </div>
+            <div class="epd-milestone-list">
+              {% for milestone in pending_milestones %}
+              <div class="epd-milestone-item">
+                <div>
+                  <div class="epd-milestone-name">{{ milestone.title }}</div>
+                  <div class="epd-milestone-sub">
+                    {{ milestone.contract.title|truncatechars:28 }} ·
+                    {{ milestone.contract.worker.user.get_full_name|default:milestone.contract.worker.user.username }}
+                  </div>
+                </div>
+                <div>
+                  <div class="epd-milestone-amount">₦{{ milestone.amount|floatformat:0 }}</div>
+                  <a href="{% url 'marketplace:contract_detail' pk=milestone.contract.pk %}#milestone-{{ milestone.pk }}"
+                     class="epd-fund-btn">
+                    <i class="fas fa-lock" style="font-size:0.6rem;"></i> Fund
+                  </a>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+
+          {# ── Pending Applications ── #}
+          <div class="epd-card">
+            <div class="epd-card-head">
+              <div class="epd-card-head-icon si-sky">
+                <i class="fas fa-inbox"></i>
+              </div>
+              <span class="epd-card-title">Pending Applications</span>
+              {% if recent_apps %}
+              <span class="epd-card-count">{{ recent_apps|length }}</span>
+              {% endif %}
+            </div>
+
+            {% if recent_apps %}
+            <div class="epd-apps-list">
+              {% for app in recent_apps %}
+              <div class="epd-app-item">
+                <div class="epd-app-avatar">
+                  {{ app.worker.user.get_full_name|default:app.worker.user.username|slice:":1"|upper }}
+                </div>
+                <div class="epd-app-info">
+                  <div class="epd-app-name">
+                    {{ app.worker.user.get_full_name|default:app.worker.user.username }}
+                  </div>
+                  <div class="epd-app-job-title">{{ app.job.title }}</div>
+                  <div class="epd-app-time">{{ app.applied_at|timesince }} ago</div>
+                </div>
+                <div class="epd-app-right">
+                  {% if app.clip_match_score %}
+                  <div class="epd-match-score">
+                    {{ app.clip_match_score|floatformat:0 }}<span>% match</span>
+                  </div>
+                  {% endif %}
+                  <div class="epd-app-links">
+                    <a href="{% url 'marketplace:job_applications' pk=app.job.pk %}" class="epd-app-link primary" title="Review application">
+                      <i class="fas fa-eye" style="font-size:0.6rem;"></i> Review
+                    </a>
+                    <a href="{% url 'marketplace:worker_profile_public' pk=app.worker.pk %}" class="epd-app-link" title="View profile">
+                      <i class="fas fa-user" style="font-size:0.6rem;"></i>
+                    </a>
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <div class="epd-apps-empty">
               <i class="fas fa-inbox"></i>
               No pending applications right now.
             </div>
             {% endif %}
           </div>
 
-          {# Quick Links #}
-          <div class="ed-info-card fade-up">
-            <div class="ed-info-card-title">
-              <i class="fas fa-link"></i> Quick Links
+          {# ── Quick Links ── #}
+          <div class="epd-card">
+            <div class="epd-card-head">
+              <div class="epd-card-head-icon si-amber">
+                <i class="fas fa-bolt"></i>
+              </div>
+              <span class="epd-card-title">Quick Links</span>
             </div>
-            <a href="{% url 'marketplace:job_create' %}" class="ed-quick-link">
-              <i class="fas fa-plus"></i> Post a New Job
-            </a>
-            <a href="{% url 'marketplace:employer_profile_edit' %}" class="ed-quick-link">
-              <i class="fas fa-pen-to-square"></i> Edit Company Profile
-            </a>
-            <a href="{% url 'marketplace:employer_profile_public' pk=employer.pk %}" class="ed-quick-link">
-              <i class="fas fa-eye"></i> View Public Profile
-            </a>
-            <a href="{% url 'marketplace:contract_list' %}" class="ed-quick-link">
-              <i class="fas fa-file-contract"></i> Escrow Contracts
-            </a>
-            <a href="{% url 'marketplace:notifications' %}" class="ed-quick-link">
-              <i class="fas fa-bell"></i> Notifications
-              {% if unread_count %}
-              <span class="ed-quick-badge">{{ unread_count }}</span>
-              {% endif %}
-            </a>
-            <a href="{% url 'marketplace:job_list' %}" class="ed-quick-link">
-              <i class="fas fa-briefcase"></i> Browse All Jobs
-            </a>
+            <div class="epd-quick-links">
+              <a href="{% url 'marketplace:job_create' %}" class="epd-quick-link">
+                <i class="fas fa-plus"></i> Post a New Job
+              </a>
+              <a href="{% url 'marketplace:employer_profile_edit' %}" class="epd-quick-link">
+                <i class="fas fa-pen-to-square"></i> Edit Company Profile
+              </a>
+              <a href="{% url 'marketplace:employer_profile_public' pk=employer.pk %}" class="epd-quick-link">
+                <i class="fas fa-eye"></i> View Public Profile
+              </a>
+              <a href="{% url 'marketplace:contract_list' %}" class="epd-quick-link">
+                <i class="fas fa-file-contract"></i> Escrow Contracts
+              </a>
+              <a href="{% url 'marketplace:notifications' %}" class="epd-quick-link">
+                <i class="fas fa-bell"></i> Notifications
+                {% if unread_count %}
+                <span class="epd-quick-badge">{{ unread_count }}</span>
+                {% endif %}
+              </a>
+              <a href="{% url 'marketplace:job_list' %}" class="epd-quick-link">
+                <i class="fas fa-briefcase"></i> Browse All Jobs
+              </a>
+            </div>
           </div>
 
-          {# Profile completeness nudge #}
+          {# ── Profile completeness nudge ── #}
           {% if not employer.about or not employer.logo or not employer.industry %}
-          <div class="ed-info-card fade-up">
-            <div class="ed-info-card-title">
-              <i class="fas fa-circle-info"></i> Complete Your Profile
+          <div class="epd-card">
+            <div class="epd-card-head">
+              <div class="epd-card-head-icon" style="background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.2);color:var(--sky);width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:0.85rem;">
+                <i class="fas fa-circle-info"></i>
+              </div>
+              <span class="epd-card-title">Complete Your Profile</span>
             </div>
-            <div class="ed-nudge">
-              <div class="ed-nudge-icon"><i class="fas fa-lightbulb"></i></div>
-              <div class="ed-nudge-text">
-                A complete company profile with logo and description
-                attracts <strong>3× more qualified applicants</strong>.
-                <a href="{% url 'marketplace:employer_profile_edit' %}">Update now →</a>
+            <div class="epd-nudge">
+              <div class="epd-nudge-icon"><i class="fas fa-lightbulb"></i></div>
+              <div class="epd-nudge-text">
+                A complete profile with logo and description attracts
+                <strong>3× more qualified applicants</strong>.
+                <a href="{% url 'marketplace:employer_profile_edit' %}">Update now <i class="fas fa-arrow-right" style="font-size:0.65rem;"></i></a>
               </div>
             </div>
           </div>
           {% endif %}
 
-          
-          <div class="ed-info-card fade-up" style="border-color:rgba(56,189,248,0.15);">
-            <div class="ed-info-card-title">
-              <i class="fas fa-brain" style="color:var(--sky);"></i>
-              <span style="color:var(--sky);">AI Worker Matching</span>
+          {# ── AI Matching card ── #}
+          <div class="epd-card" style="border-color:rgba(56,189,248,0.12);">
+            <div class="epd-card-head" style="border-color:rgba(56,189,248,0.1);">
+              <div class="epd-card-head-icon" style="background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.2);color:var(--sky);width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:0.85rem;">
+                <i class="fas fa-brain"></i>
+              </div>
+              <span class="epd-card-title" style="color:var(--sky);">AI Worker Matching</span>
             </div>
-            <p style="font-size:0.8rem;color:var(--text-2);line-height:1.65;margin-bottom:12px;">
-              TradeLink's AI automatically ranks workers against your job descriptions
-              using semantic text and portfolio image analysis. Click
-              <strong style="color:var(--amber);">Matches</strong> on any active job
-              to see your top-ranked candidates.
-            </p>
-            {% for job in jobs %}
-              {% if job.status == 'active' %}
-              <a href="{% url 'marketplace:job_matches' pk=job.pk %}"
-                 style="display:inline-flex;align-items:center;gap:6px;font-size:0.8rem;
-                        font-weight:600;color:var(--sky);text-decoration:none;transition:var(--t);"
-                 onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
-                <i class="fas fa-bolt"></i> View matches for "{{ job.title|truncatechars:28 }}"
-              </a>
-              {% endif %}
-              {% if not forloop.first %}{% endif %}
-              {% if forloop.counter == 1 %}{% endif %}
-              {% comment %}Show link only for first active job{% endcomment %}
-              {% if forloop.counter >= 1 %}{% endif %}
-            {% endfor %}
+            <div class="epd-ai-body">
+              <p>
+                TradeLink's AI ranks workers against your job descriptions using semantic
+                text and portfolio image analysis. Click <strong style="color:var(--amber);">Matches</strong> on
+                any active listing to see your top candidates instantly.
+              </p>
+              {% for job in jobs %}
+                {% if job.status == 'active' and forloop.first %}
+                <a href="{% url 'marketplace:job_matches' pk=job.pk %}" class="epd-ai-link">
+                  <i class="fas fa-bolt"></i> Matches for "{{ job.title|truncatechars:26 }}"
+                </a>
+                {% endif %}
+              {% endfor %}
+            </div>
           </div>
 
         </div>{# /sidebar #}
 
       </div>{# /layout #}
     </div>
-  </section>
+  </div>{# /body #}
 
-</div>{# /ed-page #}
+</div>{# /epd #}
 {% endblock %}
 
 
 {% block extra_scripts %}
 <script>
-/* ── Scroll-triggered fade-up ── */
-const obs = new IntersectionObserver(entries => {
-  entries.forEach(e => {
-    if (e.isIntersecting) {
-      e.target.style.animationPlayState = 'running';
-      obs.unobserve(e.target);
-    }
+/* ── Scroll-triggered entrance animation ── */
+(function () {
+  const elms = document.querySelectorAll(
+    '.epd-stat-card, .epd-card, .epd-job-row, .epd-app-item'
+  );
+  const io = new IntersectionObserver(entries => {
+    entries.forEach((e, i) => {
+      if (!e.isIntersecting) return;
+      const el = e.target;
+      const delay = parseFloat(el.dataset.delay || 0);
+      setTimeout(() => {
+        el.style.opacity = '1';
+        el.style.transform = 'translateY(0)';
+      }, delay);
+      io.unobserve(el);
+    });
+  }, { threshold: 0.06 });
+
+  elms.forEach((el, i) => {
+    el.style.cssText += 'opacity:0;transform:translateY(16px);transition:opacity 0.45s ease,transform 0.45s ease;';
+    el.dataset.delay = i * 40;
+    io.observe(el);
   });
-}, { threshold: 0.06 });
-document.querySelectorAll('.fade-up').forEach((el, i) => {
-  el.style.animationPlayState = 'paused';
-  el.style.animationDelay = el.style.animationDelay || (i * 0.06) + 's';
-  obs.observe(el);
+})();
+
+/* ── Compute real stat numbers from rendered DOM ── */
+document.addEventListener('DOMContentLoaded', () => {
+  const rows = document.querySelectorAll('.epd-job-row');
+
+  const total  = rows.length;
+  const active = [...rows].filter(r => r.dataset.status === 'active').length;
+  let totalApps = 0;
+  document.querySelectorAll('.epd-app-num').forEach(el => {
+    totalApps += parseInt(el.textContent) || 0;
+  });
+
+  const elTotal  = document.getElementById('js-stat-total');
+  const elActive = document.getElementById('js-stat-active');
+  const elApps   = document.getElementById('js-stat-apps');
+
+  if (elTotal)  elTotal.textContent  = total;
+  if (elActive) elActive.textContent = active;
+  if (elApps)   elApps.textContent   = totalApps;
+
+  /* ── Mobile: show inline app count tags ── */
+  if (window.innerWidth <= 768) {
+    document.querySelectorAll('[data-mobile-apps]').forEach(el => {
+      el.style.display = 'inline-flex';
+    });
+  }
 });
 
-/* ── AJAX job status toggle ── */
-function toggleJobStatus(btn) {
+/* ── AJAX Job status toggle ── */
+function epd_toggleJob(btn) {
   const url  = btn.dataset.toggleUrl;
-  const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
-  const card = btn.closest('.ed-job-card');
+  const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+  const card = btn.closest('.epd-job-row');
 
   btn.disabled = true;
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size:0.6rem;"></i>';
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size:0.55rem;"></i>';
 
   fetch(url, {
     method: 'POST',
@@ -985,73 +1443,57 @@ function toggleJobStatus(btn) {
   })
   .then(r => r.json())
   .then(data => {
-    const newStatus = data.status;  // 'active' or 'paused'
+    const newStatus = data.status;
     const isActive  = newStatus === 'active';
 
-    /* Update card stripe */
+    // Update stripe
+    const stripe = card.querySelector('.epd-job-stripe');
+    if (stripe) {
+      stripe.className = 'epd-job-stripe ' + (isActive ? 'stripe-active' : 'stripe-paused');
+    }
     card.dataset.status = newStatus;
 
-    /* Update button */
-    btn.className = `ed-toggle-btn ${newStatus}`;
-    btn.title     = isActive ? 'Pause this job' : 'Reactivate this job';
+    // Update button
+    btn.className = 'epd-toggle-btn ' + (isActive ? 'epd-toggle-active' : 'epd-toggle-paused');
+    btn.title = isActive ? 'Pause this job' : 'Reactivate this job';
     btn.innerHTML = isActive
-      ? '<i class="fas fa-pause" style="font-size:0.6rem;"></i> Pause'
-      : '<i class="fas fa-play"  style="font-size:0.6rem;"></i> Activate';
+      ? '<i class="fas fa-pause" style="font-size:0.55rem;"></i> Pause'
+      : '<i class="fas fa-play"  style="font-size:0.55rem;"></i> Activate';
 
-    /* Update status tag chip inside the card */
-    const tagEl = card.querySelector('.ed-job-tag.green, .ed-job-tag.amber');
+    // Update status tag
+    const tagEl = card.querySelector('.epd-tag-green, .epd-tag-amber');
     if (tagEl) {
       if (isActive) {
-        tagEl.className = 'ed-job-tag green';
-        tagEl.innerHTML = '<i class="fas fa-circle" style="font-size:0.45rem;"></i> Active';
+        tagEl.className = 'epd-tag epd-tag-green';
+        tagEl.innerHTML = '<i class="fas fa-circle"></i> Active';
       } else {
-        tagEl.className = 'ed-job-tag amber';
-        tagEl.innerHTML = '<i class="fas fa-pause" style="font-size:0.55rem;"></i> Paused';
+        tagEl.className = 'epd-tag epd-tag-amber';
+        tagEl.innerHTML = '<i class="fas fa-pause"></i> Paused';
       }
     }
+
+    // Recalculate active stat
+    const rows    = document.querySelectorAll('.epd-job-row');
+    const active  = [...rows].filter(r => r.dataset.status === 'active').length;
+    const elActive = document.getElementById('js-stat-active');
+    if (elActive) elActive.textContent = active;
 
     btn.disabled = false;
   })
   .catch(() => {
     btn.disabled  = false;
-    btn.innerHTML = 'Error — retry';
+    btn.textContent = 'Error';
     alert('Could not update job status. Please try again.');
   });
 }
 
-/* ── Auto-dismiss messages ── */
-document.querySelectorAll('.ed-msg').forEach(el => {
+/* ── Auto-dismiss toasts ── */
+document.querySelectorAll('.epd-toast').forEach(el => {
   setTimeout(() => {
-    el.style.transition = 'opacity 0.4s';
+    el.style.transition = 'opacity 0.35s ease';
     el.style.opacity    = '0';
-    setTimeout(() => el.remove(), 420);
+    setTimeout(() => el.remove(), 360);
   }, 5000);
-});
-
-/* ── Fix duplicate stat number rendering (template limitation) ──
-   The stats band has some Django template loop complexity.
-   This JS patch computes real counts from the rendered job cards.
-── */
-document.addEventListener('DOMContentLoaded', () => {
-  const cards     = document.querySelectorAll('.ed-job-card');
-  const statNums  = document.querySelectorAll('.ed-stat .ed-stat-number');
-
-  if (statNums.length >= 4) {
-    /* Total jobs */
-    statNums[0].textContent = cards.length;
-
-    /* Active jobs */
-    const activeCount = [...cards].filter(c => c.dataset.status === 'active').length;
-    statNums[1].textContent = activeCount;
-
-    /* Pending apps — already rendered correctly from context */
-    /* Total applications — sum app_count from cards */
-    let totalApps = 0;
-    document.querySelectorAll('.ed-job-app-num').forEach(el => {
-      totalApps += parseInt(el.textContent) || 0;
-    });
-    statNums[3].textContent = totalApps;
-  }
 });
 </script>
 {% endblock %}

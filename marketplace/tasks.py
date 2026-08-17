@@ -89,6 +89,28 @@ def compute_product_embedding_task(self, product_id: str) -> None:
     compute_price_intelligence_task.delay(product_id)
 
 
+@shared_task(
+    bind=True,
+    max_retries=1,
+    acks_late=False,
+    ignore_result=False,
+)
+def encode_product_search_query_task(self, query: str) -> list[float]:
+    """
+    RPC task used by marketplace/service/search_service.py to offload
+    PyTorch query encoding to the Celery worker process.
+
+    This prevents the Daphne ASGI server from crashing on Windows due to
+    PyTorch thread interactions — the exact same pattern used by the jobs
+    app's encode_search_query_task.
+
+    Returns a plain list of floats so Celery can serialise it as JSON.
+    The caller converts it back to a numpy array for cosine similarity.
+    """
+    from jobs.service.text_encoder import text_encoder
+    return text_encoder.encode(query.strip())
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 #  PAYOUT
 # ──────────────────────────────────────────────────────────────────────────────
@@ -107,7 +129,7 @@ def process_order_payout_task(self, order_id: str) -> None:
     Async wrapper around release_order_to_seller().
     Called after buyer confirms receipt so payout doesn't block the HTTP request.
     """
-    from marketplace.service.marketplace_escrow_service import release_order_to_seller
+    from marketplace.service.market_place_service_escrow import release_order_to_seller
 
     logger.info("Task: process_order_payout for %s", order_id)
     try:
@@ -136,7 +158,7 @@ def auto_complete_orders_task() -> None:
     """
     from django.utils import timezone
     from marketplace.models import Order
-    from marketplace.service.marketplace_escrow_service import release_order_to_seller
+    from marketplace.service.market_place_service_escrow import release_order_to_seller
 
     now = timezone.now()
     orders = Order.objects.filter(

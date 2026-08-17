@@ -407,6 +407,29 @@
 <main class="pf-page">
   <div class="container">
 
+    {% if not verification_profile or verification_profile.level < 1 %}
+    <!-- Gating Screen -->
+    <div class="pf-section fade-up text-center" style="padding: 64px 24px; text-align: center; max-width: 600px; margin: 40px auto 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;">
+      <div style="width: 80px; height: 80px; border-radius: 50%; background: rgba(245,158,11,0.12); display: flex; align-items: center; justify-content: center; font-size: 2.2rem; color: var(--amber); margin-bottom: 8px;">
+        <i class="fas fa-lock"></i>
+      </div>
+      <h2 style="font-family: 'Fraunces', serif; font-size: 1.8rem; font-weight: 800; color: var(--text-1); margin: 0;">
+        Identity Verification Required
+      </h2>
+      <p style="color: var(--text-2); font-size: 0.98rem; line-height: 1.6; margin: 0 0 16px; max-width: 480px;">
+        To list tools and products on TradeLink NG, you must first verify your identity. This helps keep our community safe and trusted.
+      </p>
+      <div style="display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap;">
+        <a href="{% url 'verify:nin' %}" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px;">
+          <i class="fas fa-id-card"></i> Verify My NIN
+        </a>
+        <a href="{% url 'mktplace:product_list' %}" class="btn btn-outline" style="padding: 12px 24px; text-decoration: none;">
+          Browse Marketplace
+        </a>
+      </div>
+    </div>
+    {% else %}
+
     <!-- ── Breadcrumb ─────────────────────────────────────── -->
     <nav class="pf-breadcrumb" aria-label="Breadcrumb">
       <a href="{% url 'home' %}">Home</a>
@@ -920,10 +943,10 @@
             </div>
 
             <div class="pf-actions">
-              <button type="submit" name="publish" value="1" class="btn btn-primary btn-lg">
+              <button type="submit" name="publish" value="publish" class="btn btn-primary btn-lg">
                 <i class="fas fa-rocket"></i> Publish Listing
               </button>
-              <button type="submit" name="publish" value="0" class="btn btn-save-draft btn-lg">
+              <button type="submit" name="publish" value="draft" class="btn btn-save-draft btn-lg">
                 <i class="fas fa-floppy-disk"></i> Save as Draft
               </button>
               <a href="{% url 'mktplace:seller_dashboard' %}" class="btn btn-ghost">
@@ -1078,8 +1101,8 @@
 
         </aside><!-- /pf-sidebar -->
 
-      </div><!-- /pf-layout -->
     </form>
+    {% endif %}
 
   </div><!-- /container -->
 </main>
@@ -1232,10 +1255,23 @@
     form.addEventListener('submit', (e) => {
       const submitBtn = e.submitter;
       if (submitBtn) {
+        // If the button has a name (e.g. name="publish"), its value won't be 
+        // sent if it's disabled. We append a hidden input to preserve it.
+        if (submitBtn.name) {
+          const hiddenInput = document.createElement('input');
+          hiddenInput.type = 'hidden';
+          hiddenInput.name = submitBtn.name;
+          hiddenInput.value = submitBtn.value;
+          form.appendChild(hiddenInput);
+        }
         submitBtn.disabled = true;
+        const originalText = submitBtn.innerHTML;
         submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
         // re-enable if server-side error returns
-        setTimeout(() => { submitBtn.disabled = false; }, 12000);
+        setTimeout(() => { 
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = originalText;
+        }, 12000);
       }
     });
   }

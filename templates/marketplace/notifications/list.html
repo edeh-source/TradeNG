@@ -117,11 +117,34 @@
   display: flex; align-items: flex-start; gap: 16px;
   padding: 20px 0;
   border-bottom: 1px solid var(--border-subtle);
-  transition: var(--t); position: relative;
-  cursor: default;
+  transition: background 0.18s, transform 0.18s;
+  position: relative; cursor: pointer;
+  text-decoration: none; color: inherit;
 }
 .nl-item:first-child { border-top: 1px solid var(--border-subtle); }
 .nl-item:last-child  { border-bottom: none; }
+.nl-item:hover { background: rgba(245,158,11,0.04); transform: translateX(2px); }
+
+/* Dismiss (delete) button */
+.nl-delete-form { flex-shrink: 0; align-self: center; margin-left: auto; }
+.nl-delete-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: transparent; border: 1px solid transparent;
+  color: var(--text-3); font-size: 0.8rem;
+  cursor: pointer; transition: var(--t);
+  flex-shrink: 0;
+}
+.nl-delete-btn:hover {
+  background: rgba(239,68,68,0.10); border-color: rgba(239,68,68,0.25);
+  color: #ef4444;
+}
+
+/* View hint badge */
+.nl-view-hint {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.74rem; font-weight: 600; color: var(--text-3);
+}
 
 /* Unread left glow accent */
 .nl-item.unread::before {
@@ -375,10 +398,11 @@
           </div>
           {% endifchanged %}
 
-          {# ── Notification row ── #}
-          <div class="nl-item {% if notif.is_read %}read{% else %}unread{% endif %}"
-               data-type="{{ notif.notif_type }}"
-               id="notif-{{ notif.pk }}">
+          {# ── Notification row — entire card is a link ── #}
+          <a class="nl-item {% if notif.is_read %}read{% else %}unread{% endif %}"
+             data-type="{{ notif.notif_type }}"
+             id="notif-{{ notif.pk }}"
+             href="{{ notif.get_absolute_url }}">
 
             {# Type icon #}
             <div class="nl-icon {{ notif.notif_type }}">
@@ -424,48 +448,31 @@
                   {% endif %}
                 </span>
 
-                {# Smart CTA: route to correct page based on notif data #}
-                {% if notif.data.job_id %}
-                  {% if notif.notif_type == 'new_match' %}
-                  <a href="{% url 'marketplace:job_detail' pk=notif.data.job_id %}"
-                     class="nl-action-link">
-                    <i class="fas fa-arrow-right" style="font-size:0.6rem;"></i> View Job
-                  </a>
-                  {% elif notif.notif_type == 'new_application' %}
-                  <a href="{% url 'marketplace:job_applications' pk=notif.data.job_id %}"
-                     class="nl-action-link">
-                    <i class="fas fa-arrow-right" style="font-size:0.6rem;"></i> Review Applicants
-                  </a>
-                  {% elif notif.notif_type == 'application_update' %}
-                  <a href="{% url 'marketplace:worker_applications' %}"
-                     class="nl-action-link">
-                    <i class="fas fa-arrow-right" style="font-size:0.6rem;"></i> My Applications
-                  </a>
-                  {% elif notif.notif_type == 'new_review' %}
-                  <a href="{% url 'marketplace:job_detail' pk=notif.data.job_id %}"
-                     class="nl-action-link">
-                    <i class="fas fa-arrow-right" style="font-size:0.6rem;"></i> View Job
-                  </a>
-                  {% elif notif.notif_type == 'job_expiring' %}
-                  <a href="{% url 'marketplace:job_detail' pk=notif.data.job_id %}"
-                     class="nl-action-link">
-                    <i class="fas fa-arrow-right" style="font-size:0.6rem;"></i> View Job
-                  </a>
-                  {% endif %}
-                {% elif notif.notif_type == 'profile_tip' %}
-                  <a href="{% url 'marketplace:worker_profile_edit' %}"
-                     class="nl-action-link">
-                    <i class="fas fa-arrow-right" style="font-size:0.6rem;"></i> Edit Profile
-                  </a>
-                {% endif %}
-
+                <span class="nl-view-hint">
+                  <i class="fas fa-arrow-right" style="font-size:0.6rem;"></i> View
+                </span>
               </div>{# /meta-row #}
             </div>{# /content #}
 
             {# Read dot #}
             <div class="nl-read-dot"></div>
 
-          </div>{# /nl-item #}
+            {# Delete button (stops click propagation so it doesn't navigate) #}
+            <form class="nl-delete-form"
+                  method="POST"
+                  action="{% url 'marketplace:notification_delete' pk=notif.pk %}"
+                  onclick="event.stopPropagation()">
+              {% csrf_token %}
+              <button type="submit"
+                      class="nl-delete-btn"
+                      title="Dismiss notification"
+                      onclick="dismissNotif(event, this)">
+                <i class="fas fa-xmark"></i>
+              </button>
+            </form>
+
+          </a>{# /nl-item #}
+
 
         {% endfor %}
       </div>{# /nl-list #}
@@ -614,5 +621,40 @@ document.querySelectorAll('.nl-item').forEach((el, i) => {
   }, { threshold: 0.05 });
   sObs.observe(el);
 });
+
+/* ── AJAX soft-delete / dismiss ── */
+function dismissNotif(e, btn) {
+  e.preventDefault();
+  e.stopPropagation();
+
+  const form = btn.closest('form');
+  const item = btn.closest('.nl-item');
+  const csrfToken = form.querySelector('[name=csrfmiddlewaretoken]').value;
+  const url  = form.action;
+
+  fetch(url, {
+    method: 'POST',
+    headers: {
+      'X-CSRFToken': csrfToken,
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      /* Animate the row out */
+      item.style.transition = 'opacity 0.3s, max-height 0.4s, padding 0.4s';
+      item.style.overflow   = 'hidden';
+      item.style.maxHeight  = item.offsetHeight + 'px';
+      requestAnimationFrame(() => {
+        item.style.opacity   = '0';
+        item.style.maxHeight = '0';
+        item.style.padding   = '0';
+      });
+      setTimeout(() => item.remove(), 420);
+    }
+  })
+  .catch(() => form.submit()); /* fallback to plain POST on network error */
+}
 </script>
 {% endblock %}

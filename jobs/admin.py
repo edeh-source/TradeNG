@@ -580,10 +580,10 @@ class ReviewAdmin(admin.ModelAdmin):
 
 @admin.register(Notification)
 class NotificationAdmin(admin.ModelAdmin):
-    list_display  = ['user', 'notif_type', 'title', 'is_read', 'created_at']
-    list_filter   = ['notif_type', 'is_read']
+    list_display  = ['user', 'notif_type', 'title', 'is_read', 'is_deleted', 'created_at']
+    list_filter   = ['notif_type', 'is_read', 'is_deleted']
     search_fields = ['user__username', 'title', 'body']
-    list_editable = ['is_read']
+    list_editable = ['is_read', 'is_deleted']
     readonly_fields = ['user', 'notif_type', 'title', 'body', 'data', 'created_at']
     date_hierarchy = 'created_at'
     ordering      = ['-created_at']

@@ -133,9 +133,11 @@ class EmployerRequiredMixin(LoginRequiredMixin):
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _unread_notification_count(user):
-    """Returns the count of unread notifications for a user."""
+    """Returns the count of unread, non-deleted notifications for a user."""
     if user.is_authenticated:
-        return Notification.objects.filter(user=user, is_read=False).count()
+        return Notification.objects.filter(
+            user=user, is_read=False, is_deleted=False
+        ).count()
     return 0
 
 
@@ -167,7 +169,7 @@ class TradeCategoryListView(ListView):
                 worker_count=Count('workers', distinct=True),
                 job_count=Count(
                     'jobs',
-                    filter=Q(jobs__status=Job.Status.ACTIVE),
+                    filter=Q(jobs__status=Job.Status.ACTIVE, jobs__deadline__gte=timezone.now().date()),
                     distinct=True,
                 ),
             )
@@ -199,8 +201,10 @@ class TradeCategoryDetailView(DetailView):
             Job.objects.filter(
                 trade_category=self.object,
                 status=Job.Status.ACTIVE,
+                deadline__gte=timezone.now().date(),
             )
-            .select_related('employer')
+            .select_related('employer', 'trade_category')
+            .prefetch_related('required_skills')
             .order_by('-created')
         )
         paginator = Paginator(jobs, 12)
@@ -210,7 +214,8 @@ class TradeCategoryDetailView(DetailView):
                 trade_category=self.object,
                 availability=WorkerProfile.Availability.AVAILABLE,
             )
-            .select_related('user')
+            .select_related('user', 'trade_category')
+            .prefetch_related('skills')
             .order_by('-is_featured', '-profile_completion')[:6]
         )
         ctx['unread_count']  = _unread_notification_count(self.request.user)
@@ -252,7 +257,10 @@ class JobListView(View):
  
         # Base queryset — always active, always select_related
         base_qs = (
-            Job.objects.filter(status=Job.Status.ACTIVE)
+            Job.objects.filter(
+                status=Job.Status.ACTIVE,
+                deadline__gte=timezone.now().date()
+            )
             .select_related('employer', 'trade_category')
             .prefetch_related('required_skills')
         )
@@ -390,6 +398,7 @@ class JobDetailView(View):
             .prefetch_related('required_skills', 'reviews'),
             pk=pk,
             status=Job.Status.ACTIVE,
+            deadline__gte=timezone.now().date(),
         )
 
         # Increment view counter once per session
@@ -490,7 +499,13 @@ class EmployerProfilePublicView(View):
             pk=pk,
         )
         active_jobs = (
-            Job.objects.filter(employer=employer, status=Job.Status.ACTIVE)
+            Job.objects.filter(
+                employer=employer, 
+                status=Job.Status.ACTIVE,
+                deadline__gte=timezone.now().date()
+            )
+            .select_related('trade_category')
+            .prefetch_related('required_skills')
             .order_by('-created')
         )
         reviews = (
@@ -520,17 +535,30 @@ class EmployerProfilePublicView(View):
 class DashboardRedirectView(LoginRequiredMixin, View):
     """
     /dashboard/  — Sends users to the correct dashboard based on their profile.
-    Workers → /dashboard/worker/
-    Employers → /dashboard/employer/
-    New users → profile setup
+
+    Priority order:
+      1. Worker (incl. workers who are ALSO employers or sellers)
+         → /dashboard/worker/   (cross-role buttons shown in template)
+      2. Employer-only
+         → /dashboard/employer/
+      3. New user with no profile
+         → choose_role.html
+
+    Note: Any authenticated user can buy (no separate buyer profile exists).
+    The Buyer order list is surfaced via nav links in the dashboards.
     """
 
     def get(self, request):
-        if hasattr(request.user, 'worker_profile'):
+        user = request.user
+        has_worker   = hasattr(user, 'worker_profile')
+        has_employer = hasattr(user, 'employer_profile')
+
+        # Workers always land here first — template shows buttons for other roles
+        if has_worker:
             return redirect('marketplace:worker_dashboard')
-        if hasattr(request.user, 'employer_profile'):
+        if has_employer:
             return redirect('marketplace:employer_dashboard')
-        # Brand-new user — let them set up a profile
+        # Brand-new user — let them pick a role
         return render(request, 'marketplace/dashboard/choose_role.html', {
             'unread_count': 0,
         })
@@ -614,6 +642,30 @@ class WorkerDashboardView(WorkerRequiredMixin, View):
             .order_by('funded_at')[:5]
         )
 
+        # ── Total Earnings ───────────────────────────────────────────────────
+        # We must sum worker_amount (net after platform fee), NOT amount
+        # (the gross the employer paid into escrow).
+        #
+        # worker_amount is populated at payout time (release_milestone_to_worker).
+        # For APPROVED milestones where the payout task hasn't run yet it may be
+        # null — in that case we compute it from amount × (1 − fee_pct / 100)
+        # using the contract's platform_fee_pct (default 10%).
+        from decimal import Decimal
+        released_milestones = Milestone.objects.filter(
+            contract__worker=worker,
+            status__in=[Milestone.Status.RELEASED, Milestone.Status.APPROVED],
+        ).select_related('contract').values(
+            'amount', 'worker_amount', 'contract__platform_fee_pct'
+        )
+        total_earnings = Decimal('0')
+        for ms in released_milestones:
+            if ms['worker_amount'] is not None:
+                total_earnings += ms['worker_amount']
+            else:
+                fee_pct = ms['contract__platform_fee_pct'] or Decimal('10.00')
+                total_earnings += ms['amount'] * (Decimal('1') - fee_pct / Decimal('100'))
+
+
         # ── Milestones in review — awaiting employer approval ────────────
         in_review_milestones = (
             Milestone.objects.filter(
@@ -623,6 +675,11 @@ class WorkerDashboardView(WorkerRequiredMixin, View):
             .select_related('contract', 'contract__employer__user')
             .order_by('auto_release_at')[:5]
         )
+
+        # ── Cross-role flags for sidebar navigation buttons ──────────────
+        # Workers are also sellers (same WorkerProfile is used by marketplace).
+        # Any logged-in user can be a buyer; surface order-list link in template.
+        has_employer_profile = hasattr(request.user, 'employer_profile')
 
         return render(request, self.template_name, {
             'worker':                worker,
@@ -634,7 +691,11 @@ class WorkerDashboardView(WorkerRequiredMixin, View):
             'review_count':          review_count,
             'funded_milestones':     funded_milestones,
             'in_review_milestones':  in_review_milestones,
+            'total_earnings':        total_earnings,
             'unread_count':          _unread_notification_count(request.user),
+            # Cross-role navigation
+            'has_employer_profile':  has_employer_profile,
+            'is_seller':             True,   # all workers can sell on marketplace
         })
 
 
@@ -740,7 +801,7 @@ class JobApplyView(WorkerRequiredMixin, View):
     template_name = 'marketplace/jobs/apply.html'
 
     def _get_job(self, pk):
-        return get_object_or_404(Job, pk=pk, status=Job.Status.ACTIVE)
+        return get_object_or_404(Job, pk=pk, status=Job.Status.ACTIVE, deadline__gte=timezone.now().date())
 
     def get(self, request, pk):
         job = self._get_job(pk)
@@ -934,10 +995,10 @@ class EmployerDashboardView(EmployerRequiredMixin, View):
     def get(self, request):
         employer = self.employer_profile
 
-        active_jobs = (
-            Job.objects.filter(employer=employer, status=Job.Status.ACTIVE)
+        jobs = (
+            Job.objects.filter(employer=employer)
             .annotate(app_count=Count('applications'))
-            .order_by('-created')[:5]
+            .order_by('-created')
         )
 
         recent_apps = (
@@ -965,13 +1026,18 @@ class EmployerDashboardView(EmployerRequiredMixin, View):
             ).count()
         )
 
+        # ── Cross-role flags ────────────────────────────────────────────
+        has_worker_profile = hasattr(request.user, 'worker_profile')
+
         return render(request, self.template_name, {
             'employer':    employer,
-            'active_jobs': active_jobs,
+            'jobs':        jobs,
             'recent_apps': recent_apps,
             'pending_milestones':       pending_milestones,
             'pending_milestones_total': pending_milestones_total,
-            'unread_count': _unread_notification_count(request.user),
+            'unread_count':             _unread_notification_count(request.user),
+            # Cross-role navigation
+            'has_worker_profile': has_worker_profile,
         })
 
 
@@ -1329,24 +1395,32 @@ class NotificationListView(LoginRequiredMixin, View):
     """
     /notifications/
     Lists all notifications for the current user, most recent first.
+    Soft-deleted notifications are excluded from the user's view.
     """
     template_name = 'marketplace/notifications/list.html'
     per_page      = 20
 
     def get(self, request):
+        from datetime import date, timedelta
         notifications = Notification.objects.filter(
-            user=request.user
-        ).order_by('-created_at')
+            user=request.user,
+            is_deleted=False,
+        ).select_related('user').order_by('-created_at')
         paginator = Paginator(notifications, self.per_page)
 
         # Mark all as read when the user opens the page
         Notification.objects.filter(
-            user=request.user, is_read=False
+            user=request.user, is_read=False, is_deleted=False
         ).update(is_read=True)
+
+        today     = date.today()
+        yesterday = today - timedelta(days=1)
 
         return render(request, self.template_name, {
             'notifications': paginator.get_page(request.GET.get('page')),
             'unread_count':  0,   # just marked them all read
+            'today':         today,
+            'yesterday':     yesterday,
         })
 
 
@@ -1362,7 +1436,7 @@ class MarkNotificationReadView(LoginRequiredMixin, View):
             pk=pk, user=request.user
         ).update(is_read=True)
         unread = Notification.objects.filter(
-            user=request.user, is_read=False
+            user=request.user, is_read=False, is_deleted=False
         ).count()
         return JsonResponse({'unread_count': unread})
 
@@ -1379,3 +1453,39 @@ class MarkAllNotificationsReadView(LoginRequiredMixin, View):
         ).update(is_read=True)
         messages.success(request, 'All notifications marked as read.')
         return redirect('marketplace:notifications')
+
+
+class DeleteNotificationView(LoginRequiredMixin, View):
+    """
+    POST /notifications/<pk>/delete/
+    Soft-deletes a single notification for the current user.
+    The record remains in the database and is still visible in the admin.
+    Returns JSON {"ok": true} for AJAX calls, or redirects for plain POST.
+    """
+
+    def post(self, request, pk):
+        Notification.objects.filter(
+            pk=pk, user=request.user
+        ).update(is_deleted=True)
+
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            return JsonResponse({'ok': True})
+        return redirect('marketplace:notifications')
+
+
+class GetCategorySkillsView(View):
+    """
+    GET /api/skills/?category_id=<pk>
+    Returns a JSON list of skills for the given trade category.
+    """
+    def get(self, request):
+        category_id = request.GET.get('category_id')
+        if not category_id:
+            return JsonResponse({'skills': []})
+        
+        try:
+            skills = Skill.objects.filter(category_id=category_id).order_by('name')
+            data = [{'id': str(skill.id), 'name': skill.name} for skill in skills]
+            return JsonResponse({'skills': data})
+        except ValueError:
+            return JsonResponse({'skills': []}, status=400)

@@ -568,6 +568,31 @@
           </div>
         </div>
 
+        {# ─── 1.5. Skills ─── #}
+        <div class="we-card fade-up d1">
+          <div class="we-card-header">
+            <div class="we-card-icon"><i class="fas fa-tools"></i></div>
+            <div class="we-card-title">Skills</div>
+          </div>
+          <div class="we-card-body">
+            <div class="we-field {% if form.skills.errors %}has-error{% endif %}">
+              <label class="we-label">Select your skills</label>
+              <div class="we-skills-wrap">
+                {% for checkbox in form.skills %}
+                  <label class="we-skill-check">
+                    {{ checkbox.tag }} <span>{{ checkbox.choice_label }}</span>
+                  </label>
+                {% empty %}
+                  <span class="we-help" style="grid-column: 1 / -1;">Please select a Trade Category and save the form to see available skills.</span>
+                {% endfor %}
+              </div>
+              {% if form.skills.errors %}
+                <span class="we-field-error"><i class="fas fa-circle-exclamation"></i> {{ form.skills.errors.0 }}</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
         {# ─── 2. Bio ─── #}
         <div class="we-card fade-up d1">
           <div class="we-card-header">
@@ -1008,6 +1033,52 @@ function deletePortfolioItem(btn) {
     btn.disabled = false;
     btn.innerHTML = '<i class="fas fa-trash-can"></i> Remove';
     alert('Network error. Please try again.');
+  });
+}
+/* ── Dynamic Skills Fetch ── */
+const categorySelect = document.querySelector('select[name="trade_category"]');
+const skillsWrap = document.querySelector('.we-skills-wrap');
+
+if (categorySelect && skillsWrap) {
+  categorySelect.addEventListener('change', function() {
+    const categoryId = this.value;
+    if (!categoryId) {
+      skillsWrap.innerHTML = '<span class="we-help" style="grid-column: 1 / -1;">Please select a Trade Category to see available skills.</span>';
+      return;
+    }
+    
+    // Show loading
+    skillsWrap.innerHTML = '<span class="we-help" style="grid-column: 1 / -1;"><i class="fas fa-spinner fa-spin"></i> Loading skills...</span>';
+    
+    fetch(`{% url 'marketplace:api_skills' %}?category_id=${categoryId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (!data.skills || data.skills.length === 0) {
+          skillsWrap.innerHTML = '<span class="we-help" style="grid-column: 1 / -1;">No skills found for this category.</span>';
+          return;
+        }
+        
+        skillsWrap.innerHTML = '';
+        data.skills.forEach(skill => {
+          const label = document.createElement('label');
+          label.className = 'we-skill-check';
+          
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.name = 'skills';
+          checkbox.value = skill.id;
+          
+          const span = document.createElement('span');
+          span.textContent = skill.name;
+          
+          label.appendChild(checkbox);
+          label.appendChild(span);
+          skillsWrap.appendChild(label);
+        });
+      })
+      .catch(err => {
+        skillsWrap.innerHTML = '<span class="we-help" style="grid-column: 1 / -1; color: #fca5a5;">Error loading skills. Please try again.</span>';
+      });
   });
 }
 </script>

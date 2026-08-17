@@ -312,17 +312,22 @@ def approve_milestone(milestone_id: str) -> bool:
 
 def release_milestone_to_worker(milestone_id: str) -> bool:
     """
-    The core payout function. Called by approve_milestone() and auto_release
+    The core payout function. Called by approve_milestone() and the auto_release
     Celery task.
 
-    - Validates worker has a WorkerBankAccount with paystack_recipient_code
-    - Computes worker_amount = milestone.amount * (1 - contract.platform_fee_pct / 100)
-    - If worker has no recipient_code, calls create_transfer_recipient() first
-    - Calls Paystack Initiate Transfer API
-    - Saves transfer_code to milestone.paystack_transfer_ref
-    - Sets milestone.status = RELEASED, milestone.worker_amount
-    - Creates Notifications for worker and employer
-    Returns True on success.
+    Flow:
+      1. Validates worker has a WorkerBankAccount with a paystack_recipient_code.
+         If not, creates one first via create_transfer_recipient().
+      2. Deducts the platform fee (contract.platform_fee_pct, default 10%):
+             worker_amount = milestone.amount × (1 − fee_pct / 100)
+      3. Calls Paystack POST /transfer.
+      4. Paystack may respond with inner status "otp" or "pending" (OTP required)
+         OR "success" (OTP disabled on the account).
+         - OTP required  → sets milestone.status = PENDING_OTP, saves transfer_code,
+                           notifies admin to approve the transfer on the Paystack
+                           dashboard or via the OTP finalization endpoint.
+         - Success       → calls mark_milestone_released() to set RELEASED and notify.
+      Returns True if the transfer was initiated (otp/pending/success), False on error.
     """
     try:
         milestone = Milestone.objects.select_related(
@@ -358,13 +363,20 @@ def release_milestone_to_worker(milestone_id: str) -> bool:
             return False
         bank_account.refresh_from_db()
 
-    # Compute worker amount
-    fee_pct = contract.platform_fee_pct
+    # ── Compute worker amount after platform fee deduction ─────────────────────
+    fee_pct = Decimal(str(contract.platform_fee_pct))          # ensure Decimal
     worker_amount = milestone.amount * (Decimal("1") - fee_pct / Decimal("100"))
     worker_amount = worker_amount.quantize(Decimal("0.01"))
     worker_amount_kobo = int(worker_amount * 100)
+    platform_fee = milestone.amount - worker_amount
 
-    # Initiate transfer
+    logger.info(
+        "release_milestone_to_worker: milestone=%s gross=₦%s fee_pct=%s%% "
+        "platform_fee=₦%s worker_amount=₦%s",
+        milestone_id, milestone.amount, fee_pct, platform_fee, worker_amount,
+    )
+
+    # ── Initiate Paystack transfer ─────────────────────────────────────────────
     payload = {
         "source": "balance",
         "amount": worker_amount_kobo,
@@ -389,51 +401,83 @@ def release_milestone_to_worker(milestone_id: str) -> bool:
             )
             return False
 
-        transfer_code = data["data"].get("transfer_code", "")
+        transfer_data = data.get("data", {})
+        transfer_status = transfer_data.get("status", "").lower()
+        transfer_code = transfer_data.get("transfer_code", "")
 
+        # Always save transfer_code and worker_amount immediately
         milestone.paystack_transfer_ref = transfer_code
-        milestone.status = Milestone.Status.RELEASED
         milestone.worker_amount = worker_amount
-        milestone.save(update_fields=[
-            "paystack_transfer_ref", "status", "worker_amount", "updated_at",
-        ])
 
-        # Check if all milestones are released → mark contract completed
-        all_released = not contract.milestones.exclude(
-            status=Milestone.Status.RELEASED,
-        ).exists()
-        if all_released:
-            contract.status = Contract.Status.COMPLETED
-            contract.save(update_fields=["status", "updated_at"])
+        if transfer_status in ("success", "pending", "processing", "received"):
+            # ── Automatic transfer initiated — no OTP required ───────────────
+            # Paystack has accepted and queued/executed the transfer directly to the bank.
+            milestone.status = Milestone.Status.RELEASED
+            milestone.save(update_fields=[
+                "paystack_transfer_ref", "worker_amount", "status", "updated_at",
+            ])
+            mark_milestone_released(milestone)
+            logger.info(
+                "release_milestone_to_worker: automatic transfer %s completed (status=%s) — milestone %s marked RELEASED.",
+                transfer_code, transfer_status, milestone_id,
+            )
+            return True
 
-        # Notify worker
-        _notify(
-            user=contract.worker.user,
-            notif_type=Notification.NotifType.ESCROW_RELEASED,
-            title=f'Payment sent: \u20a6{worker_amount:,.2f}',
-            body=(
-                f'Payment of \u20a6{worker_amount:,.2f} for "{milestone.title}" '
-                f'has been sent to your bank account.'
-            ),
-            data={"milestone_id": str(milestone.pk), "contract_id": str(contract.pk)},
-        )
-        # Notify employer
-        _notify(
-            user=contract.employer.user,
-            notif_type=Notification.NotifType.ESCROW_RELEASED,
-            title=f'Milestone complete: "{milestone.title}"',
-            body=(
-                f'Milestone "{milestone.title}" is complete. '
-                f'\u20a6{worker_amount:,.2f} paid to worker.'
-            ),
-            data={"milestone_id": str(milestone.pk), "contract_id": str(contract.pk)},
-        )
+        elif transfer_status == "otp":
+            # ── Paystack requires OTP / dashboard approval ─────────────────
+            # Only fires if OTP requirement is still active on the Paystack dashboard.
+            milestone.status = Milestone.Status.PENDING_OTP
+            milestone.save(update_fields=[
+                "paystack_transfer_ref", "worker_amount", "status", "updated_at",
+            ])
 
-        logger.info(
-            "release_milestone_to_worker: milestone %s released — \u20a6%s to worker.",
-            milestone_id, worker_amount,
-        )
-        return True
+            # Notify admins to approve the OTP or disable OTP in Paystack settings
+            User = get_user_model()
+            admin_users = User.objects.filter(is_staff=True)
+            for admin_user in admin_users:
+                _notify(
+                    user=admin_user,
+                    notif_type=Notification.NotifType.SYSTEM,
+                    title=f"[ACTION REQUIRED] Approve Transfer OTP: {milestone.title}",
+                    body=(
+                        f"A transfer of ₦{worker_amount:,.2f} for milestone "
+                        f'"{milestone.title}" is awaiting OTP confirmation on Paystack. '
+                        f"Transfer code: {transfer_code}. "
+                        f"To make transfers 100% automatic, disable OTP in Paystack Dashboard preferences or via 'python manage.py disable_paystack_otp'."
+                    ),
+                    data={
+                        "milestone_id": str(milestone.pk),
+                        "transfer_code": transfer_code,
+                        "contract_id": str(contract.pk),
+                    },
+                )
+
+            # Notify worker that payout is pending
+            _notify(
+                user=contract.worker.user,
+                notif_type=Notification.NotifType.ESCROW_RELEASED,
+                title=f'Payout initiated: ₦{worker_amount:,.2f}',
+                body=(
+                    f'Your payout of ₦{worker_amount:,.2f} for "{milestone.title}" '
+                    f'has been initiated and is being processed by Paystack. '
+                    f'You will be notified once the funds arrive in your account.'
+                ),
+                data={"milestone_id": str(milestone.pk), "contract_id": str(contract.pk)},
+            )
+
+            logger.info(
+                "release_milestone_to_worker: milestone %s PENDING_OTP — "
+                "transfer_code=%s, worker_amount=₦%s.",
+                milestone_id, transfer_code, worker_amount,
+            )
+            return True
+
+        else:
+            logger.error(
+                "release_milestone_to_worker: unexpected transfer status '%s' for %s.",
+                transfer_status, milestone_id,
+            )
+            return False
 
     except requests.RequestException:
         logger.exception(
@@ -441,6 +485,234 @@ def release_milestone_to_worker(milestone_id: str) -> bool:
             milestone_id,
         )
         return False
+
+
+def mark_milestone_released(milestone) -> None:
+    """
+    Called after a transfer is confirmed (either immediately when OTP is
+    disabled, or via the transfer.success webhook).
+    Marks contract completed if all milestones are done and fires notifications.
+    """
+    contract = milestone.contract
+
+    # Check if all milestones are released → mark contract completed
+    all_released = not contract.milestones.exclude(
+        status__in=[Milestone.Status.RELEASED, Milestone.Status.REFUNDED],
+    ).exists()
+    if all_released:
+        contract.status = Contract.Status.COMPLETED
+        contract.save(update_fields=["status", "updated_at"])
+
+    worker_amount = milestone.worker_amount or Decimal("0")
+
+    # Notify worker
+    _notify(
+        user=contract.worker.user,
+        notif_type=Notification.NotifType.ESCROW_RELEASED,
+        title=f'Payment sent: ₦{worker_amount:,.2f}',
+        body=(
+            f'Payment of ₦{worker_amount:,.2f} for "{milestone.title}" '
+            f'has been sent to your bank account.'
+        ),
+        data={"milestone_id": str(milestone.pk), "contract_id": str(contract.pk)},
+    )
+    # Notify employer
+    _notify(
+        user=contract.employer.user,
+        notif_type=Notification.NotifType.ESCROW_RELEASED,
+        title=f'Milestone complete: "{milestone.title}"',
+        body=(
+            f'Milestone "{milestone.title}" is complete. '
+            f'₦{worker_amount:,.2f} paid to worker ({contract.platform_fee_pct or 10}% platform fee deducted).'
+        ),
+        data={"milestone_id": str(milestone.pk), "contract_id": str(contract.pk)},
+    )
+
+    logger.info(
+        "mark_milestone_released: milestone %s released — ₦%s to worker.",
+        milestone.pk, worker_amount,
+    )
+
+
+def finalize_transfer_with_otp(milestone_id: str, otp: str) -> bool:
+    """
+    Calls Paystack POST /transfer/finalize_transfer with the OTP entered by
+    the account owner to confirm a pending transfer.
+
+    This is used when OTP is enabled on the Paystack account.  After the OTP
+    is accepted, Paystack sends a transfer.success webhook which triggers
+    mark_milestone_released() via the webhook handler.
+
+    Returns True if Paystack accepted the OTP.
+    """
+    try:
+        milestone = Milestone.objects.select_related(
+            "contract__worker__user",
+            "contract__employer__user",
+        ).get(pk=milestone_id)
+    except Milestone.DoesNotExist:
+        logger.error("finalize_transfer_with_otp: Milestone %s not found.", milestone_id)
+        return False
+
+    if milestone.status != Milestone.Status.PENDING_OTP:
+        logger.warning(
+            "finalize_transfer_with_otp: milestone %s has status %s, expected PENDING_OTP.",
+            milestone_id, milestone.status,
+        )
+        return False
+
+    if not milestone.paystack_transfer_ref:
+        logger.error(
+            "finalize_transfer_with_otp: milestone %s has no transfer_code.", milestone_id,
+        )
+        return False
+
+    payload = {
+        "transfer_code": milestone.paystack_transfer_ref,
+        "otp": otp,
+    }
+
+    try:
+        resp = requests.post(
+            f"{PAYSTACK_BASE}/transfer/finalize_transfer",
+            json=payload,
+            headers=_paystack_headers(),
+            timeout=PAYSTACK_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        if not data.get("status"):
+            logger.error(
+                "finalize_transfer_with_otp: Paystack rejected OTP for milestone %s: %s",
+                milestone_id, data.get("message"),
+            )
+            return False
+
+        logger.info(
+            "finalize_transfer_with_otp: OTP accepted for milestone %s, "
+            "transfer_code=%s. Marking as released.",
+            milestone_id, milestone.paystack_transfer_ref,
+        )
+        milestone.status = Milestone.Status.RELEASED
+        milestone.save(update_fields=["status", "updated_at"])
+        mark_milestone_released(milestone)
+        return True
+
+    except requests.RequestException:
+        logger.exception(
+            "finalize_transfer_with_otp: request failed for milestone %s", milestone_id,
+        )
+        return False
+
+
+def sync_pending_transfers(contract) -> None:
+    """
+    Checks the status of any PENDING_OTP milestones on a contract by directly
+    querying the Paystack API. This acts as a fallback for missed webhooks,
+    especially useful in local development environments.
+    """
+    pending_milestones = contract.milestones.filter(status=Milestone.Status.PENDING_OTP)
+    for milestone in pending_milestones:
+        if not milestone.paystack_transfer_ref:
+            continue
+
+        try:
+            resp = requests.get(
+                f"{PAYSTACK_BASE}/transfer/{milestone.paystack_transfer_ref}",
+                headers=_paystack_headers(),
+                timeout=PAYSTACK_TIMEOUT,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("status"):
+                    transfer_status = data["data"].get("status", "").lower()
+                    if transfer_status in ("success", "pending", "processing", "received"):
+                        # Transfer completed successfully!
+                        milestone.status = Milestone.Status.RELEASED
+                        if not milestone.worker_amount:
+                            fee_pct = Decimal(str(contract.platform_fee_pct or 10.00))
+                            milestone.worker_amount = (milestone.amount * (Decimal("1") - fee_pct / Decimal("100"))).quantize(Decimal("0.01"))
+                        milestone.save(update_fields=["status", "worker_amount", "updated_at"])
+                        mark_milestone_released(milestone)
+                        logger.info("sync_pending_transfers: synced milestone %s to RELEASED.", milestone.pk)
+                    elif transfer_status in ("failed", "reversed", "abandoned"):
+                        # Revert so it can be retried
+                        milestone.status = Milestone.Status.APPROVED
+                        milestone.paystack_transfer_ref = None
+                        milestone.worker_amount = None
+                        milestone.save(update_fields=[
+                            'status', 'paystack_transfer_ref', 'worker_amount', 'updated_at',
+                        ])
+                        logger.warning("sync_pending_transfers: transfer %s failed on Paystack. Reverted milestone %s.", milestone.paystack_transfer_ref, milestone.pk)
+
+        except requests.RequestException:
+            logger.exception("sync_pending_transfers: failed to sync milestone %s", milestone.pk)
+            pass
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  PAYSTACK TRANSFER OTP MANAGEMENT (Enable / Disable OTP for transfers)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def request_disable_transfer_otp() -> dict:
+    """
+    Calls Paystack POST /transfer/disable_otp.
+    Paystack generates an OTP and sends it to the account owner's mobile/email.
+    To complete the process, submit the OTP via finalize_disable_transfer_otp().
+    """
+    try:
+        resp = requests.post(
+            f"{PAYSTACK_BASE}/transfer/disable_otp",
+            json={},
+            headers=_paystack_headers(),
+            timeout=PAYSTACK_TIMEOUT,
+        )
+        data = resp.json()
+        logger.info("request_disable_transfer_otp: response=%s", data)
+        return data
+    except requests.RequestException as exc:
+        logger.exception("request_disable_transfer_otp failed: %s", exc)
+        return {"status": False, "message": str(exc)}
+
+
+def finalize_disable_transfer_otp(otp: str) -> dict:
+    """
+    Calls Paystack POST /transfer/disable_otp_finalize with the OTP received.
+    Once successful, all future transfers from this Paystack secret key will be 100% automated without OTP.
+    """
+    try:
+        resp = requests.post(
+            f"{PAYSTACK_BASE}/transfer/disable_otp_finalize",
+            json={"otp": otp.strip()},
+            headers=_paystack_headers(),
+            timeout=PAYSTACK_TIMEOUT,
+        )
+        data = resp.json()
+        logger.info("finalize_disable_transfer_otp: response=%s", data)
+        return data
+    except requests.RequestException as exc:
+        logger.exception("finalize_disable_transfer_otp failed: %s", exc)
+        return {"status": False, "message": str(exc)}
+
+
+def enable_transfer_otp() -> dict:
+    """
+    Calls Paystack POST /transfer/enable_otp to re-enable OTP requirement if needed.
+    """
+    try:
+        resp = requests.post(
+            f"{PAYSTACK_BASE}/transfer/enable_otp",
+            json={},
+            headers=_paystack_headers(),
+            timeout=PAYSTACK_TIMEOUT,
+        )
+        data = resp.json()
+        logger.info("enable_transfer_otp: response=%s", data)
+        return data
+    except requests.RequestException as exc:
+        logger.exception("enable_transfer_otp failed: %s", exc)
+        return {"status": False, "message": str(exc)}
 
 
 # ──────────────────────────────────────────────────────────────────────────────

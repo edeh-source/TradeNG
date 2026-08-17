@@ -28,6 +28,9 @@ urlpatterns = [
     path("", include("jobs.urls")),
     path('marketplace/', include('marketplace.urls', namespace='mktplace')),
     path('chats/', include('chats.urls', namespace='chats')),
+    path('verify/', include('verification.urls', namespace='verify')),
+    path('accounts/', include('allauth.urls')),
+    path('', include('bot.urls')),
 ]
 
 if settings.DEBUG:

@@ -349,6 +349,9 @@
       <div class="ep-identity fade-up">
 
         <div class="ep-badges">
+          {% if employer.user.verification_profile %}
+            {% include "verification/includes/_verification_badge.html" with vp=employer.user.verification_profile %}
+          {% endif %}
           {% if employer.is_verified %}
           <span class="ep-badge ep-badge-verified">
             <i class="fas fa-circle-check"></i> Verified Employer

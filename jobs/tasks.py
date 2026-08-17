@@ -164,6 +164,23 @@ def compute_portfolio_image_task(self, portfolio_item_id: str) -> None:
     compute_portfolio_image_embedding(portfolio_item_id)
 
 
+@shared_task(
+    bind=True,
+    max_retries=1,
+    acks_late=False,
+    ignore_result=False,
+)
+def encode_search_query_task(self, query: str) -> list[float]:
+    """
+    RPC task used by the web server (search_service.py) to offload PyTorch
+    inference to the Celery worker process. This prevents the Daphne ASGI
+    server from crashing on Windows due to PyTorch thread interactions.
+    """
+    from jobs.service.text_encoder import text_encoder
+    # Returns a list of floats so it can be serialized as JSON by Celery
+    return text_encoder.encode(query.strip())
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 #  MATCHING TASKS
 # ──────────────────────────────────────────────────────────────────────────────
@@ -191,6 +208,13 @@ def compute_matches_for_job_task(self, job_id: str) -> None:
         "Task: compute_matches_for_job — %d rows written for %s", count, job_id
     )
 
+    # Push WhatsApp notifications to all workers who scored >= 0.65 on this job.
+    # This runs as a separate task so a failed notification never retries the
+    # expensive matching computation above.
+    if count:
+        from bot.tasks import notify_job_matches_task
+        notify_job_matches_task.delay(job_id)
+
 
 @shared_task(
     bind=True,
@@ -215,6 +239,11 @@ def compute_matches_for_worker_task(self, worker_profile_id: str) -> None:
         "Task: compute_matches_for_worker — %d rows written for %s",
         count, worker_profile_id,
     )
+
+    # Notify the worker via WhatsApp if they have strong new matches.
+    if count:
+        from bot.tasks import notify_worker_new_matches_task
+        notify_worker_new_matches_task.delay(worker_profile_id)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -262,17 +291,50 @@ def recompute_all_embeddings_task() -> None:
 def expire_old_jobs_task() -> None:
     """
     Periodic task — marks jobs past their deadline as EXPIRED.
-    Add to Celery Beat schedule to run hourly.
+    Add to Celery Beat schedule to run hourly or nightly.
     """
     from django.utils import timezone
-    from jobs.models import Job
+    from jobs.models import Job, JobApplication, Notification
 
-    updated = Job.objects.filter(
+    today = timezone.now().date()
+    expired_jobs = Job.objects.filter(
         status=Job.Status.ACTIVE,
-        deadline__lt=timezone.now().date(),
-    ).update(status=Job.Status.EXPIRED)
+        deadline__lt=today,
+    )
 
-    logger.info("expire_old_jobs_task: %d jobs expired.", updated)
+    count = 0
+    for job in expired_jobs:
+        # Mark as expired
+        job.status = Job.Status.EXPIRED
+        job.save(update_fields=['status'])
+
+        # Notify employer
+        Notification.objects.create(
+            user=job.employer.user,
+            notif_type=Notification.NotifType.JOB_EXPIRING,
+            title="Job Listing Expired",
+            body=f"Your job listing '{job.title}' has reached its deadline and is now expired.",
+            data={'link': '/dashboard/employer/'}
+        )
+
+        # Archive pending applications
+        pending_apps = job.applications.filter(status=JobApplication.Status.PENDING)
+        for app in pending_apps:
+            app.status = JobApplication.Status.REJECTED
+            app.save(update_fields=['status'])
+            
+            # Notify applicant
+            Notification.objects.create(
+                user=app.worker.user,
+                notif_type=Notification.NotifType.APPLICATION_UPDATE,
+                title="Job Expired",
+                body=f"The job '{job.title}' has expired and your application has been archived.",
+                data={'link': '/dashboard/worker/'}
+            )
+            
+        count += 1
+
+    logger.info("expire_old_jobs_task: %d jobs expired.", count)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

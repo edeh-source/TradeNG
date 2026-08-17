@@ -40,7 +40,6 @@ ALLOWED_HOSTS = ["*"]
 # ==================================
 
 INSTALLED_APPS = [
-    'daphne',
     "jazzmin",
     "django.contrib.admin",
     "django.contrib.auth",
@@ -61,9 +60,11 @@ INSTALLED_APPS = [
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
     'allauth.socialaccount.providers.facebook',
+    'allauth.socialaccount.providers.linkedin_oauth2',
     'marketplace.apps.MarketplaceConfig',
     'chats.apps.ChatsConfig',
-    
+    'verification.apps.VerificationConfig',
+    'bot.apps.BotConfig',
 ]
 
 
@@ -89,7 +90,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
-    'allauth.account.middleware.AccountMiddleware',
+    'allauth.account.middleware.AccountMiddleware', 
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -121,6 +122,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "verification.context_processors.verification_context",
             ],
         },
     },
@@ -180,6 +182,12 @@ CHANNEL_LAYERS = {
 }
 
 
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+    'allauth.account.auth_backends.AuthenticationBackend',
+]
+
+
 # ==================================
 # PASSWORD VALIDATION
 # ==================================
@@ -192,6 +200,22 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
+ACCOUNT_AUTHENTICATION_METHOD = 'email'
+ACCOUNT_EMAIL_REQUIRED         = True
+ACCOUNT_USERNAME_REQUIRED      = True
+ACCOUNT_USERNAME_MIN_LENGTH    = 3
+ACCOUNT_EMAIL_VERIFICATION     = 'optional'    # change to 'mandatory' if you send verification emails
+ 
+ACCOUNT_ADAPTER           = 'users.adapters.AccountAdapter'
+SOCIALACCOUNT_ADAPTER     = 'users.adapters.SocialAccountAdapter'
+ 
+SOCIALACCOUNT_AUTO_SIGNUP = True     # skip the allauth sign-up form; use your own register page
+SOCIALACCOUNT_QUERY_EMAIL = True     # always request the email scope
+SOCIALACCOUNT_STORE_TOKENS = True    # persist OAuth tokens in the DB (useful for API calls)
+ 
+LOGIN_REDIRECT_URL         = 'marketplace:dashboard'
+ACCOUNT_LOGOUT_REDIRECT_URL = 'signin'
+
 # ==================================
 # INTERNATIONALISATION
 # ==================================
@@ -203,6 +227,36 @@ USE_TZ = True
 
 PHONENUMBER_DEFAULT_REGION = 'NG'
 
+SOCIALACCOUNT_LOGIN_ON_GET = True
+
+SOCIALACCOUNT_PROVIDERS = {
+    'facebook': {
+        'APP': {
+            'client_id': os.environ.get('FACEBOOK_APP_ID', ''),
+            'secret':    os.environ.get('FACEBOOK_APP_SECRET', ''),
+            'key':       '',
+        },
+        'METHOD':         'oauth2',
+        'SCOPE':          ['email', 'public_profile'],
+        'AUTH_PARAMS':    {'auth_type': 'reauthenticate'},
+        'FIELDS':         ['id', 'email', 'name', 'first_name', 'last_name'],
+        'EXCHANGE_TOKEN': True,
+        'VERIFIED_EMAIL': False,
+        'VERSION':        'v19.0',
+    },
+ 
+    'linkedin_oauth2': {
+        'APP': {
+            'client_id': os.environ.get('LINKEDIN_CLIENT_ID', ''),
+            'secret':    os.environ.get('LINKEDIN_CLIENT_SECRET', ''),
+            'key':       '',
+        },
+        # LinkedIn's "Sign In with LinkedIn using OpenID Connect" product
+        # uses these three scopes.
+        'SCOPE': ['openid', 'profile', 'email'],
+    },
+}
+ 
 
 # ==================================
 # STATIC & MEDIA FILES
@@ -359,24 +413,56 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
 # PAYSTACK
 # ==================================
 
-PAYSTACK_SECRET_KEY     = os.environ.get('PAYSTACK_SECRET_KEY', '')
-PAYSTACK_PUBLIC_KEY     = os.environ.get('PAYSTACK_PUBLIC_KEY', '')
+PAYSTACK_SECRET_KEY     = os.environ.get('PAYSTACK_SECRET_KEY', 'sk_test_166306c4fa6512b95030917dbcfaaa25866d2ff0')
+PAYSTACK_PUBLIC_KEY     = os.environ.get('PAYSTACK_PUBLIC_KEY', 'pk_test_d487748abaabb52e28f3c13481053902f78f0e1d')
 PAYSTACK_CALLBACK_URL   = os.environ.get('PAYSTACK_CALLBACK_URL', 'http://localhost:8000/escrow/paystack/callback/')
-PAYSTACK_WEBHOOK_SECRET = os.environ.get('PAYSTACK_SECRET_KEY', '')  # Same key used for webhook HMAC
+PAYSTACK_WEBHOOK_SECRET = os.environ.get('PAYSTACK_SECRET_KEY', 'sk_test_166306c4fa6512b95030917dbcfaaa25866d2ff0')  # Same key used for webhook HMAC
+print(PAYSTACK_SECRET_KEY, PAYSTACK_PUBLIC_KEY, PAYSTACK_CALLBACK_URL, PAYSTACK_WEBHOOK_SECRET)
+# ==================================
+# DOJAH (KYC / VERIFICATION)
+# ==================================
+
+DOJAH_APP_ID  = os.environ.get('DOJAH_APP_ID')
+DOJAH_API_KEY = os.environ.get('DOJAH_API_KEY')
+DOJAH_BASE_URL = os.environ.get('DOJAH_BASE_URL', 'https://api.dojah.io')
+
+# ==================================
+# MESSAGING PROVIDER
+# ==================================
+# Switch between 'twilio' and 'meta' with a single env-var change + redeploy.
+# No code changes required.
+BOT_PROVIDER = os.environ.get('BOT_PROVIDER', 'twilio')  # 'twilio' | 'meta'
+
+# --- Twilio (current default) ---
+# Used when BOT_PROVIDER=twilio.
+# Sign up at https://twilio.com — use the WhatsApp Sandbox for immediate access.
+TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID', '')
+TWILIO_AUTH_TOKEN  = os.environ.get('TWILIO_AUTH_TOKEN', '')
+TWILIO_FROM_NUMBER = os.environ.get('TWILIO_FROM_NUMBER', '')  # E.164, e.g. +14155238886
+
+# --- Meta WhatsApp Business Cloud API (switch back once verified) ---
+# Used when BOT_PROVIDER=meta.
+WHATSAPP_PHONE_NUMBER_ID = os.environ.get('WHATSAPP_PHONE_NUMBER_ID', '')
+WHATSAPP_ACCESS_TOKEN    = os.environ.get('WHATSAPP_ACCESS_TOKEN', '')
+WHATSAPP_VERIFY_TOKEN    = os.environ.get('WHATSAPP_VERIFY_TOKEN', 'my_verify_token')
+WHATSAPP_API_VERSION     = 'v19.0'
 
 # ==================================
 # EMAIL
 # ==================================
 
+
+
 if DEBUG:
-    EMAIL_BACKEND       = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
-    EMAIL_HOST          = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
-    EMAIL_PORT          = int(os.environ.get('EMAIL_PORT', '465'))
+    EMAIL_BACKEND  = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST         = 'smtp.gmail.com'
+    EMAIL_PORT        = '465'
     EMAIL_USE_SSL       = os.environ.get('EMAIL_USE_SSL', 'True') == 'True'
     EMAIL_USE_TLS       = os.environ.get('EMAIL_USE_TLS', 'False') == 'True'
     EMAIL_HOST_USER     = os.environ.get('EMAIL_HOST_USER')
     EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
     DEFAULT_FROM_EMAIL  = os.environ.get('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
+
 
 
 # Disable symlinks — use real copies of files instead (required on Windows
@@ -426,6 +512,15 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'marketplace.tasks.recompute_all_personalised_feeds_task',
         'schedule': crontab(hour=1, minute=30),
     },
+    'expire-old-jobs-hourly': {
+        'task': 'jobs.tasks.expire_old_jobs_task',
+        'schedule': crontab(minute=5),
+    },
+    'auto-complete-orders': {
+        'task': 'marketplace.tasks.auto_complete_orders_task',
+        'schedule': crontab(minute='*'),  # Run every minute for testing
+    },
 }
+RECOVERY_CODE = "KTZG9CAEBATDFUXHC6J16QEA"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

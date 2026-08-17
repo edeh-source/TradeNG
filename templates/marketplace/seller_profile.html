@@ -466,6 +466,10 @@
             </div>
             <div class="sp-badges">
 
+              {% if seller.user.verification_profile %}
+                {% include "verification/includes/_verification_badge.html" with vp=seller.user.verification_profile %}
+              {% endif %}
+
               {% if seller.is_verified %}
               <span class="sp-badge sp-badge-verified">
                 <i class="fas fa-shield-check"></i> Verified Worker

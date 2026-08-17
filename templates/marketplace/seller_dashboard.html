@@ -548,9 +548,12 @@
     <div class="dash-header fade-up">
       <div class="dash-header-left">
         <p class="dash-greeting"><i class="fas fa-store"></i> Seller Dashboard</p>
-        <h1 class="dash-title">
+        <h1 class="dash-title" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
           Welcome back,
           <span class="amber-text">{{ seller.user.get_full_name|default:seller.user.username|truncatechars:20 }}</span>
+          {% if verification_profile %}
+            {% include "verification/includes/_verification_badge.html" with vp=verification_profile %}
+          {% endif %}
         </h1>
         <p class="dash-subtitle">
           Manage your listings, respond to offers, and track your sales.

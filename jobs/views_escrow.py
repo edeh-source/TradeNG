@@ -48,6 +48,8 @@ from .service.escrow_service import (
     approve_milestone,
     raise_dispute,
     resolve_dispute,
+    finalize_transfer_with_otp,
+    sync_pending_transfers,
 )
 
 logger = logging.getLogger(__name__)
@@ -135,6 +137,10 @@ class ContractDetailView(LoginRequiredMixin, View):
 
         if not _user_owns_contract(request.user, contract):
             raise Http404
+
+        # Check Paystack directly for any pending transfers
+        # (This is a robust fallback for missed webhooks, especially locally)
+        sync_pending_transfers(contract)
 
         milestones = contract.milestones.order_by('display_order', 'created_at')
 
@@ -283,35 +289,67 @@ class MilestoneFundView(EmployerRequiredMixin, View):
 class PaystackCallbackView(View):
     """
     GET /escrow/paystack/callback/
-    Handles the redirect from Paystack after the employer completes payment.
-    Public — no login required (Paystack redirects the browser here).
+    Handles the redirect from Paystack after the employer (or buyer) completes payment.
+
+    LoginRequiredMixin is removed because cross-site redirects (from Paystack) often
+    lose session cookies in modern browsers (SameSite=Lax). Subsequent same-site redirects
+    will re-attach the session cookie.
     """
 
     def get(self, request):
         reference = request.GET.get('reference', '')
-        trxref = request.GET.get('trxref', reference)
-        ref = reference or trxref
+        trxref    = request.GET.get('trxref', reference)
+        ref       = reference or trxref
 
         if not ref:
             messages.error(request, 'No payment reference found.')
-            return redirect('marketplace:dashboard')
+            return redirect('marketplace:contract_list')
 
-        success = verify_milestone_payment(ref)
+        # Route to the correct service based on the reference prefix
+        if ref.startswith('mktplace_'):
+            from marketplace.service.market_place_service_escrow import verify_order_payment
+            from marketplace.models import Order
+            
+            success = verify_order_payment(ref)
+            if success:
+                try:
+                    order = Order.objects.get(paystack_payment_ref=ref)
+                    messages.success(request, 'Payment successful! Your order is now in escrow.')
+                    return redirect('mktplace:order_detail', pk=order.pk)
+                except Order.DoesNotExist:
+                    messages.success(request, 'Payment verified successfully.')
+                    return redirect('mktplace:order_list')
+            
+            messages.error(
+                request,
+                'Payment verification failed. Please contact support if funds were deducted.'
+            )
+            return redirect('mktplace:order_list')
+        else:
+            # Assume it's a job milestone
+            success = verify_milestone_payment(ref)
+            if success:
+                try:
+                    milestone = Milestone.objects.select_related('contract').get(
+                        paystack_payment_ref=ref,
+                    )
+                    messages.success(
+                        request,
+                        f'Payment verified! Milestone "{milestone.title}" is now funded. '
+                        'You can begin work.',
+                    )
+                    return redirect('marketplace:contract_detail', pk=milestone.contract.pk)
+                except Milestone.DoesNotExist:
+                    messages.success(request, 'Payment verified successfully.')
+                    return redirect('marketplace:contract_list')
 
-        if success:
-            # Try to find the milestone to redirect to contract detail
-            try:
-                milestone = Milestone.objects.select_related('contract').get(
-                    paystack_payment_ref=ref,
-                )
-                messages.success(request, f'Payment verified! Milestone "{milestone.title}" is now funded.')
-                return redirect('marketplace:contract_detail', pk=milestone.contract.pk)
-            except Milestone.DoesNotExist:
-                messages.success(request, 'Payment verified successfully.')
-                return redirect('marketplace:contract_list')
+            messages.error(
+                request,
+                'Payment verification failed. '
+                'Please contact support if funds were deducted from your account.',
+            )
+            return redirect('marketplace:contract_list')
 
-        messages.error(request, 'Payment verification failed. Please contact support if funds were deducted.')
-        return redirect('marketplace:contract_list')
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -432,78 +470,7 @@ class MilestoneDisputeView(LoginRequiredMixin, View):
         return redirect('marketplace:contract_detail', pk=milestone.contract.pk)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  WORKER BANK ACCOUNT
-# ──────────────────────────────────────────────────────────────────────────────
 
-class WorkerBankAccountView(WorkerRequiredMixin, View):
-    """
-    GET/POST /escrow/bank-account/
-    Worker creates or updates their bank account for receiving payouts.
-    """
-    template_name = 'marketplace/escrow/bank_account.html'
-
-    def get(self, request):
-        bank_account = WorkerBankAccount.objects.filter(
-            worker=self.worker_profile,
-        ).first()
-
-        return render(request, self.template_name, {
-            'bank_account': bank_account,
-            'unread_count': _unread_notification_count(request.user),
-        })
-
-    def post(self, request):
-        account_name   = request.POST.get('account_name', '').strip()
-        account_number = request.POST.get('account_number', '').strip()
-        bank_code      = request.POST.get('bank_code', '').strip()
-        bank_name      = request.POST.get('bank_name', '').strip()
-
-        # Validation
-        errors = []
-        if not account_name:
-            errors.append('Account name is required.')
-        if not account_number or len(account_number) != 10 or not account_number.isdigit():
-            errors.append('Enter a valid 10-digit account number.')
-        if not bank_code:
-            errors.append('Bank code is required.')
-        if not bank_name:
-            errors.append('Bank name is required.')
-
-        if errors:
-            if _is_ajax(request):
-                return JsonResponse({'errors': errors}, status=400)
-            for e in errors:
-                messages.error(request, e)
-            return redirect('marketplace:bank_account')
-
-        bank_account, created = WorkerBankAccount.objects.update_or_create(
-            worker=self.worker_profile,
-            defaults={
-                'account_name': account_name,
-                'account_number': account_number,
-                'bank_code': bank_code,
-                'bank_name': bank_name,
-                'paystack_recipient_code': '',  # Reset — will be re-created
-                'is_verified': False,
-            },
-        )
-
-        # Trigger async recipient creation
-        from jobs.tasks import create_transfer_recipient_task
-        create_transfer_recipient_task.delay(str(bank_account.pk))
-
-        if _is_ajax(request):
-            return JsonResponse({
-                'id': str(bank_account.pk),
-                'account_name': bank_account.account_name,
-                'bank_name': bank_account.bank_name,
-                'created': created,
-            })
-
-        action = 'added' if created else 'updated'
-        messages.success(request, f'Bank account {action} successfully. Verification in progress.')
-        return redirect('marketplace:bank_account')
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -557,3 +524,59 @@ class DisputeAdminResolveView(LoginRequiredMixin, View):
             messages.error(request, 'Failed to resolve dispute. Check logs for details.')
 
         return redirect('admin:jobs_dispute_change', dispute.pk)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  MILESTONE FINALIZE OTP
+# ──────────────────────────────────────────────────────────────────────────────
+
+class MilestoneFinalizeOtpView(LoginRequiredMixin, View):
+    """
+    POST /escrow/milestones/<pk>/finalize-otp/
+    Staff-only view to submit the Paystack transfer OTP for a PENDING_OTP milestone.
+
+    When Paystack requires OTP confirmation for a transfer, this view accepts
+    the OTP and calls Paystack's /transfer/finalize_transfer endpoint.
+    Paystack then fires a transfer.success webhook which marks the milestone
+    as RELEASED.
+    """
+
+    def post(self, request, pk):
+        if not request.user.is_staff:
+            raise Http404
+
+        milestone = get_object_or_404(
+            Milestone.objects.select_related('contract__employer__user', 'contract__worker__user'),
+            pk=pk,
+            status=Milestone.Status.PENDING_OTP,
+        )
+
+        otp = request.POST.get('otp', '').strip()
+        if not otp:
+            if _is_ajax(request):
+                return JsonResponse({'error': 'OTP is required.'}, status=400)
+            messages.error(request, 'Please enter the OTP sent to your Paystack account email/phone.')
+            return redirect('marketplace:contract_detail', pk=milestone.contract.pk)
+
+        success = finalize_transfer_with_otp(
+            milestone_id=str(milestone.pk),
+            otp=otp,
+        )
+
+        if success:
+            if _is_ajax(request):
+                return JsonResponse({
+                    'status': 'otp_accepted',
+                    'message': 'OTP accepted. The transfer will complete shortly.',
+                })
+            messages.success(
+                request,
+                f'OTP accepted for "{milestone.title}". '
+                'The transfer will be completed shortly and the worker will be notified.'
+            )
+        else:
+            if _is_ajax(request):
+                return JsonResponse({'error': 'Invalid OTP or transfer already processed.'}, status=400)
+            messages.error(request, 'Invalid OTP or this transfer has already been processed.')
+
+        return redirect('marketplace:contract_detail', pk=milestone.contract.pk)

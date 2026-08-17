@@ -116,11 +116,56 @@ class PaystackWebhookView(View):
 
     @staticmethod
     def _handle_transfer_success(event_data):
-        """Log a successful transfer."""
+        """
+        Finalises the milestone payout when Paystack confirms the transfer.
+        This fires for both:
+          - Immediate transfers (OTP disabled on Paystack account)
+          - OTP-approved transfers (OTP enabled — webhook fires after OTP accepted)
+        """
         transfer_code = event_data.get('transfer_code', '')
+        if not transfer_code:
+            logger.warning("_handle_transfer_success: no transfer_code in event.")
+            return
+
+        from jobs.models import Milestone
+        from jobs.service.escrow_service import mark_milestone_released
+
+        try:
+            milestone = Milestone.objects.select_related(
+                'contract__worker__user',
+                'contract__employer__user',
+                'contract',
+            ).get(paystack_transfer_ref=transfer_code)
+        except Milestone.DoesNotExist:
+            logger.warning(
+                "_handle_transfer_success: no milestone with transfer_ref %s.",
+                transfer_code,
+            )
+            return
+
+        # Only act if not already RELEASED
+        if milestone.status == Milestone.Status.RELEASED:
+            logger.info(
+                "_handle_transfer_success: milestone %s already RELEASED, skipping.",
+                milestone.pk,
+            )
+            return
+
+        # Mark RELEASED and fire notifications
+        milestone.status = Milestone.Status.RELEASED
+        fields_to_update = ['status', 'updated_at']
+        if not milestone.worker_amount:
+            from decimal import Decimal
+            contract = milestone.contract
+            fee_pct = Decimal(str(contract.platform_fee_pct or 10.00))
+            milestone.worker_amount = (milestone.amount * (Decimal("1") - fee_pct / Decimal("100"))).quantize(Decimal("0.01"))
+            fields_to_update.append('worker_amount')
+        milestone.save(update_fields=fields_to_update)
+        mark_milestone_released(milestone)
+
         logger.info(
-            "_handle_transfer_success: transfer %s completed.",
-            transfer_code,
+            "_handle_transfer_success: milestone %s marked RELEASED via webhook.",
+            milestone.pk,
         )
 
     @staticmethod

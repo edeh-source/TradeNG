@@ -56,6 +56,12 @@
       --shadow-amber:   0 8px 32px rgba(245,158,11,0.22);
       --ease:           cubic-bezier(0.4,0,0.2,1);
       --t:              all 0.28s cubic-bezier(0.4,0,0.2,1);
+
+      /* Verification badge colours */
+      --ver-blue:  #3B82F6;
+      --ver-gold:  #F59E0B;
+      --ver-green: #10B981;
+      --ver-grey:  #6B7280;
     }
 
     body {
@@ -111,7 +117,16 @@
       font-size: 0.85rem; color: #0C0A08; font-weight: 900;
       box-shadow: 0 4px 16px rgba(245,158,11,0.35); flex-shrink: 0;
     }
-    .logo-ng { color: var(--amber); }
+    .logo-ng {
+      background: linear-gradient(to right,
+        #008751 0%, #008751 33%,
+        #FFFFFF 33%, #FFFFFF 67%,
+        #008751 67%, #008751 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      color: transparent;
+    }
 
     .nav-links {
       display: flex; align-items: center; gap: 4px; list-style: none;
@@ -323,6 +338,160 @@
     }
     .social-ico:hover { background: var(--surface-2); color: var(--amber); border-color: var(--border-strong); }
 
+    /* ========== VERIFICATION BADGES & PROMPT ========== */
+    .ver-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: var(--r-pill);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .ver-badge i {
+      font-size: 0.8rem;
+    }
+    .ver-badge--blue {
+      background: rgba(59, 130, 246, 0.1);
+      color: var(--ver-blue);
+      border-color: rgba(59, 130, 246, 0.2);
+    }
+    .ver-badge--gold {
+      background: rgba(245, 158, 11, 0.1);
+      color: var(--ver-gold);
+      border-color: rgba(245, 158, 11, 0.2);
+    }
+    .ver-badge--green {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--ver-green);
+      border-color: rgba(16, 185, 129, 0.2);
+    }
+    .ver-badge--grey {
+      background: rgba(107, 114, 128, 0.1);
+      color: var(--ver-grey);
+      border-color: rgba(107, 114, 128, 0.2);
+    }
+
+    /* Verification Prompt Banner */
+    .ver-prompt {
+      position: fixed;
+      bottom: 24px;
+      left: 0;
+      right: 0;
+      width: calc(100% - 32px);
+      max-width: 760px;
+      margin-left: auto;
+      margin-right: auto;
+      z-index: 1100;
+      border-radius: var(--r-lg);
+      padding: 16px 20px;
+      border: 1px solid var(--border-strong);
+      box-shadow: var(--shadow-lg);
+      animation: fadeUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+    .ver-prompt--warn {
+      background: rgba(19, 16, 8, 0.95);
+      border-color: rgba(245, 158, 11, 0.38);
+    }
+    .ver-prompt--info {
+      background: rgba(8, 12, 19, 0.95);
+      border-color: rgba(59, 130, 246, 0.38);
+    }
+    .ver-prompt__inner {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .ver-prompt__icon {
+      font-size: 1.25rem;
+      flex-shrink: 0;
+    }
+    .ver-prompt--warn .ver-prompt__icon { color: var(--ver-gold); }
+    .ver-prompt--info .ver-prompt__icon { color: var(--ver-blue); }
+    .ver-prompt__text {
+      color: var(--text-1);
+      font-size: 0.9rem;
+      line-height: 1.45;
+      flex-grow: 1;
+      min-width: 0;          /* allows flex child to shrink below content size */
+      overflow-wrap: break-word;
+    }
+    .ver-prompt__text strong {
+      color: #fff;
+    }
+    .ver-prompt__cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg, var(--amber), var(--orange));
+      color: #0C0A08;
+      text-decoration: none;
+      padding: 8px 18px;
+      border-radius: var(--r-pill);
+      font-size: 0.82rem;
+      font-weight: 700;
+      transition: var(--t);
+      flex-shrink: 0;
+      white-space: nowrap;
+      border: none;
+      cursor: pointer;
+    }
+    .ver-prompt__cta:hover {
+      filter: brightness(1.08);
+      transform: translateY(-1px);
+    }
+    .ver-prompt__cta--subtle {
+      background: rgba(59, 130, 246, 0.12);
+      color: var(--ver-blue);
+      border: 1px solid rgba(59, 130, 246, 0.25);
+    }
+    .ver-prompt__cta--subtle:hover {
+      background: rgba(59, 130, 246, 0.2);
+      color: #fff;
+      border-color: var(--ver-blue);
+    }
+    .ver-prompt__close {
+      background: none;
+      border: none;
+      color: var(--text-3);
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 4px;
+      transition: var(--t);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .ver-prompt__close:hover {
+      color: var(--text-1);
+    }
+
+    @media (max-width: 640px) {
+      .ver-prompt {
+        bottom: 16px;
+        padding: 14px 16px;
+      }
+      .ver-prompt__inner {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+      }
+      .ver-prompt__close {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+      }
+      .ver-prompt__cta {
+        align-self: flex-start;
+      }
+    }
+
     /* ========== ANIMATIONS ========== */
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(28px); }
@@ -376,11 +545,10 @@
 
     <ul class="nav-links">
       <li><a href="{% url 'home' %}"              class="{% block nav_home %}{% endblock %}">Home</a></li>
-      <li><a href=""                               class="{% block nav_jobs %}{% endblock %}">Find Work</a></li>
-      <li><a href="{% url 'mktplace:product_list' %}" class="{% block nav_marketplace %}{% endblock %}">Marketplace</a></li>
-      <li><a href=""                               class="{% block nav_trades %}{% endblock %}">Trades</a></li>
-      <li><a href=""                               class="{% block nav_employers %}{% endblock %}">For Employers</a></li>
-      <li><a href=""                               class="{% block nav_blog %}{% endblock %}">Resources</a></li>
+      <li><a href="{% url 'marketplace:job_list' %}" class="{% block nav_jobs %}{% endblock %}">Find Work</a></li>
+      <li><a href="{% url 'marketplace:trade_list' %}" class="{% block nav_trades %}{% endblock %}">Trades</a></li>
+      <li><a href="{% url 'home' %}#employers"    class="{% block nav_employers %}{% endblock %}">Employers</a></li>
+      <li><a href="{% url 'mktplace:product_list' %}" class="{% block nav_blog %}{% endblock %}">Marketplace</a></li>
     </ul>
 
     <div class="nav-actions">
@@ -388,7 +556,10 @@
         <a href="{% url 'chats:conversation_list' %}" class="btn btn-ghost" title="Messages">
           <i class="fas fa-comment-dots"></i> Messages
         </a>
-        <span class="nav-username">Hi, {{ user.username }}</span>
+        <a href="{% url 'edit_profile' %}" class="btn btn-ghost" title="Profile">
+          <i class="fas fa-user-circle"></i> Profile
+        </a>
+        <a href="{% url 'marketplace:dashboard' %}" class="nav-username" style="text-decoration:none;">Hi, {{ user.username }}</a>
         <form method="post" action="{% url 'signout' %}" class="signout-form">
           {% csrf_token %}
           <button type="submit" class="btn btn-ghost">
@@ -408,15 +579,17 @@
 
   <div class="mobile-menu" id="mobileMenu">
     <a href="{% url 'home' %}">Home</a>
-    <a href="">Find Work</a>
-    <a href="{% url 'mktplace:product_list' %}">Marketplace</a>
-    <a href="">Trades</a>
-    <a href="">For Employers</a>
-    <a href="">Resources</a>
+    <a href="{% url 'marketplace:job_list' %}">Find Work</a>
+    <a href="{% url 'marketplace:trade_list' %}">Trades</a>
+    <a href="{% url 'home' %}#employers">For Employers</a>
+    <a href="{% url "mktplace:product_list" %}">Marketplace</a>
     <div class="m-actions">
       {% if user.is_authenticated %}
         <a href="{% url 'chats:conversation_list' %}" class="btn btn-ghost">
           <i class="fas fa-comment-dots"></i> Messages
+        </a>
+        <a href="{% url 'edit_profile' %}" class="btn btn-ghost">
+          <i class="fas fa-user-circle"></i> Profile
         </a>
         <form method="post" action="{% url 'signout' %}" class="signout-form">
           {% csrf_token %}
@@ -454,8 +627,8 @@
       <div>
         <p class="footer-col-title">For Workers</p>
         <ul class="footer-links">
-          <li><a href="#">Browse Jobs</a></li>
-          <li><a href="#">Build Profile</a></li>
+          <li><a href="{% url 'marketplace:job_list' %}">Browse Jobs</a></li>
+          <li><a href="{% url 'marketplace:worker_profile_edit' %}">Build Profile</a></li>
           <li><a href="#">Rate Guide</a></li>
           <li><a href="#">Skills Hub</a></li>
           <li><a href="#">Success Stories</a></li>
@@ -464,8 +637,8 @@
       <div>
         <p class="footer-col-title">For Employers</p>
         <ul class="footer-links">
-          <li><a href="#">Post a Job</a></li>
-          <li><a href="#">Find Talent</a></li>
+          <li><a href="{% url 'marketplace:job_create' %}">Post a Job</a></li>
+          <li><a href="{% url 'marketplace:trade_list' %}">Find Talent</a></li>
           <li><a href="#">Pricing</a></li>
           <li><a href="#">Verification</a></li>
           <li><a href="#">Business Account</a></li>
@@ -514,6 +687,12 @@
       }
     });
   </script>
+  {# ── Verification prompt banner ── #}
+  {% include "verification/includes/_verification_prompt.html" %}
+
+  {# ── Cookie consent banner ── #}
+  {% include "includes/_cookie_consent.html" %}
+
   {% block extra_scripts %}{% endblock %}
 </body>
 </html>

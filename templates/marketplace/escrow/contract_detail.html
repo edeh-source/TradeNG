@@ -438,7 +438,7 @@
         <div class="bank-alert fade-up d1">
           <i class="fas fa-exclamation-triangle"></i>
           <p>
-            You need to <a href="{% url 'marketplace:bank_account' %}">add a bank account</a>
+            You need to <a href="{% url 'edit_profile' %}#bank">add a bank account</a>
             before you can receive milestone payouts. Set it up now so you're ready when funds are released.
           </p>
         </div>
@@ -513,8 +513,39 @@
             <!-- Worker payout info -->
             {% if milestone.worker_amount %}
             <div class="submission-note" style="background: rgba(16,185,129,0.06); border-color: rgba(16,185,129,0.2);">
-              <p class="submission-note-label" style="color: var(--emerald);">Worker payout</p>
-              <p>₦{{ milestone.worker_amount|floatformat:0 }} (after platform fee)</p>
+              <p class="submission-note-label" style="color: var(--emerald);">Worker payout (after 10% platform fee)</p>
+              <p style="display:flex; gap:24px; flex-wrap:wrap;">
+                <span>Gross: <strong>₦{{ milestone.amount|floatformat:0 }}</strong></span>
+                <span>Platform fee (10%): <strong style="color:var(--orange);">–₦<span class="fee-calc" data-gross="{{ milestone.amount }}" data-net="{{ milestone.worker_amount }}"></span></strong></span>
+                <span>Net payout: <strong style="color:var(--emerald);">₦{{ milestone.worker_amount|floatformat:0 }}</strong></span>
+              </p>
+            </div>
+            {% endif %}
+
+            <!-- PENDING_OTP status box -->
+            {% if milestone.status == 'pending_otp' %}
+            <div class="submission-note" style="background: rgba(245,158,11,0.06); border-color: rgba(245,158,11,0.3);">
+              <p class="submission-note-label" style="color: var(--amber);"><i class="fas fa-key"></i> Transfer Awaiting OTP Approval</p>
+              <p style="font-size:0.85rem; color:var(--text-2); margin-bottom:10px;">
+                A payout of <strong>₦{{ milestone.worker_amount|floatformat:0 }}</strong> has been initiated
+                (Transfer code: <code>{{ milestone.paystack_transfer_ref }}</code>).
+                Paystack requires OTP confirmation before funds are released.
+              </p>
+              {% if request.user.is_staff %}
+              <form method="post" action="{% url 'marketplace:milestone_finalize_otp' pk=milestone.pk %}" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                {% csrf_token %}
+                <input type="text" name="otp" placeholder="Enter Paystack OTP"
+                       class="form-control" style="max-width:180px; padding:8px 14px; font-size:0.9rem;"
+                       maxlength="10" required autocomplete="one-time-code">
+                <button type="submit" class="btn btn-primary btn-sm">
+                  <i class="fas fa-key"></i> Confirm OTP
+                </button>
+              </form>
+              {% else %}
+              <p style="font-size:0.82rem; color:var(--text-3);">
+                <i class="fas fa-info-circle"></i> An admin will approve this transfer shortly.
+              </p>
+              {% endif %}
             </div>
             {% endif %}
 
@@ -585,6 +616,12 @@
               {% if milestone.status == 'released' %}
               <span class="meta-chip" style="color: var(--emerald); font-size:0.82rem;">
                 <i class="fas fa-check-double"></i> Payment released
+              </span>
+              {% endif %}
+
+              {% if milestone.status == 'pending_otp' %}
+              <span class="meta-chip" style="color: var(--amber); font-size:0.82rem;">
+                <i class="fas fa-hourglass-half"></i> Payout pending OTP
               </span>
               {% endif %}
 
@@ -720,14 +757,14 @@
           <p style="font-size:0.87rem; color:var(--text-2); margin-bottom:12px;">
             Your bank account is set up and ready to receive payments.
           </p>
-          <a href="{% url 'marketplace:bank_account' %}" class="btn btn-ghost btn-sm" style="width:100%; justify-content:center;">
+          <a href="{% url 'edit_profile' %}#bank" class="btn btn-ghost btn-sm" style="width:100%; justify-content:center;">
             <i class="fas fa-university"></i> Update Bank Account
           </a>
           {% else %}
           <p style="font-size:0.87rem; color:var(--text-2); margin-bottom:12px;">
             Add your bank account to receive milestone payouts via Paystack.
           </p>
-          <a href="{% url 'marketplace:bank_account' %}" class="btn btn-primary btn-sm" style="width:100%; justify-content:center;">
+          <a href="{% url 'edit_profile' %}#bank" class="btn btn-primary btn-sm" style="width:100%; justify-content:center;">
             <i class="fas fa-plus"></i> Add Bank Account
           </a>
           {% endif %}
@@ -813,21 +850,21 @@
 <script>
   function openSubmitModal(milestoneId, title) {
     document.getElementById('submitWorkForm').action =
-      '/marketplace/escrow/milestones/' + milestoneId + '/submit/';
+      '/escrow/milestones/' + milestoneId + '/submit/';
     document.getElementById('submitModalSub').textContent =
       'Submit work for "' + title + '" and notify the employer for review.';
     document.getElementById('submitModal').classList.add('open');
   }
   function openApproveModal(milestoneId, title) {
     document.getElementById('approveWorkForm').action =
-      '/marketplace/escrow/milestones/' + milestoneId + '/approve/';
+      '/escrow/milestones/' + milestoneId + '/approve/';
     document.getElementById('approveModalSub').textContent =
       'Approve "' + title + '" and release the escrowed payment to the worker. This cannot be undone.';
     document.getElementById('approveModal').classList.add('open');
   }
   function openDisputeModal(milestoneId) {
     document.getElementById('disputeForm').action =
-      '/marketplace/escrow/milestones/' + milestoneId + '/dispute/';
+      '/escrow/milestones/' + milestoneId + '/dispute/';
     document.getElementById('disputeModal').classList.add('open');
   }
   function closeModal(id) {
@@ -846,6 +883,13 @@
         m.classList.remove('open');
       });
     }
+  });
+  // Compute platform fee display: gross - net
+  document.querySelectorAll('.fee-calc').forEach(function(el) {
+    var gross = parseFloat(el.dataset.gross) || 0;
+    var net   = parseFloat(el.dataset.net)   || 0;
+    var fee   = gross - net;
+    el.textContent = Math.round(fee).toLocaleString();
   });
 </script>
 
