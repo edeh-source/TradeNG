@@ -67,7 +67,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.username
 
     def get_full_name(self):
-        return f"{self.first_name} {self.last_name}".strip()
+        parts = [p for p in (self.first_name, self.last_name) if p]
+        return " ".join(parts)
 
     @property
     def profile_complete(self):

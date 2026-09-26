@@ -82,6 +82,8 @@ from .views_escrow import (
     MilestoneSubmitWorkView,
     MilestoneApproveView,
     MilestoneDisputeView,
+    PostDisputeMessageView,
+    MediationAgreeView,
     DisputeAdminResolveView,
     MilestoneFinalizeOtpView,
 )
@@ -306,6 +308,16 @@ urlpatterns = [
         'escrow/milestones/<uuid:pk>/dispute/',
         MilestoneDisputeView.as_view(),
         name='milestone_dispute',
+    ),
+    path(
+        'escrow/disputes/<uuid:pk>/messages/',
+        PostDisputeMessageView.as_view(),
+        name='dispute_messages',
+    ),
+    path(
+        'escrow/disputes/<uuid:pk>/mediate/',
+        MediationAgreeView.as_view(),
+        name='dispute_mediate',
     ),
 
     path(

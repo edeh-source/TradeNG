@@ -129,15 +129,99 @@
     }
 
     .nav-links {
-      display: flex; align-items: center; gap: 4px; list-style: none;
+      display: flex; align-items: center; gap: 2px; list-style: none;
     }
-    .nav-links a {
-      font-size: 0.9rem; font-weight: 500; color: var(--text-2);
-      text-decoration: none; padding: 8px 15px;
-      border-radius: var(--r-md); transition: var(--t);
+    .nav-links > li > a {
+      font-size: 0.875rem; font-weight: 500; color: var(--text-2);
+      text-decoration: none; padding: 8px 13px;
+      border-radius: var(--r-md); transition: var(--t); display: flex; align-items: center; gap: 5px;
     }
-    .nav-links a:hover { color: var(--text-1); background: var(--surface-1); }
-    .nav-links a.active { color: var(--amber); background: var(--surface-1); }
+    .nav-links > li > a:hover { color: var(--text-1); background: var(--surface-1); }
+    .nav-links > li > a.active { color: var(--amber); background: var(--surface-1); }
+
+    /* ── NAV DROPDOWN SYSTEM ── */
+    .nav-dropdown { position: relative; display: inline-flex; align-items: center; }
+    .nav-dropdown-trigger {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 0.875rem; font-weight: 500; color: var(--text-2);
+      text-decoration: none; padding: 8px 13px;
+      border-radius: var(--r-md); transition: var(--t); cursor: pointer; white-space: nowrap;
+    }
+    .nav-dropdown-trigger .nd-arrow {
+      font-size: 0.6rem; transition: transform 0.22s ease; color: var(--text-3); margin-left: 1px;
+    }
+    .nav-dropdown:hover .nav-dropdown-trigger { color: var(--text-1); background: var(--surface-1); }
+    .nav-dropdown:hover .nd-arrow { transform: rotate(180deg); color: var(--amber); }
+
+    /* Base dropdown panel */
+    .nd-panel {
+      position: absolute; top: calc(100% + 10px); left: 0;
+      background: rgba(15, 11, 8, 0.97);
+      backdrop-filter: blur(28px) saturate(180%);
+      -webkit-backdrop-filter: blur(28px) saturate(180%);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--r-xl); padding: 10px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(245,158,11,0.06);
+      opacity: 0; visibility: hidden;
+      transform: translateY(12px) scale(0.98);
+      transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 1050; pointer-events: none;
+      min-width: 220px;
+    }
+    .nav-dropdown:hover .nd-panel {
+      opacity: 1; visibility: visible; transform: translateY(0) scale(1); pointer-events: auto;
+    }
+
+    /* Standard dropdown items */
+    .nd-item {
+      display: flex; align-items: center; gap: 11px;
+      padding: 10px 13px; border-radius: var(--r-lg);
+      color: var(--text-2); text-decoration: none;
+      font-size: 0.855rem; font-weight: 500;
+      transition: var(--t); position: relative;
+    }
+    .nd-item:hover { color: var(--text-1); background: var(--surface-1); transform: translateX(3px); }
+    .nd-item.active { color: var(--amber); background: var(--surface-1); }
+    .nd-item-icon {
+      width: 30px; height: 30px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.8rem; flex-shrink: 0;
+      background: var(--surface-1); border: 1px solid var(--border-subtle);
+      transition: var(--t); color: var(--amber);
+    }
+    .nd-item:hover .nd-item-icon { background: var(--surface-2); border-color: var(--border-strong); }
+    .nd-item-text strong { display: block; font-size: 0.855rem; font-weight: 600; color: inherit; line-height: 1.2; margin-bottom: 1px; }
+    .nd-item-text span { font-size: 0.76rem; color: var(--text-3); font-weight: 400; line-height: 1.2; }
+    .nd-sep { height: 1px; background: var(--border-subtle); margin: 6px 0; }
+    .nd-label {
+      font-size: 0.65rem; font-weight: 700; letter-spacing: 1.8px;
+      text-transform: uppercase; color: var(--text-3); padding: 6px 13px 2px;
+    }
+
+    /* Wide 2-col panels */
+    .nd-panel-wide {
+      min-width: 420px;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 12px;
+    }
+    .nd-col-label {
+      grid-column: span 2; font-size: 0.65rem; font-weight: 700;
+      letter-spacing: 1.8px; text-transform: uppercase; color: var(--text-3); padding: 2px 6px 6px;
+    }
+
+    /* CTA strip at bottom of dropdown */
+    .nd-cta {
+      margin: 6px 0 0;
+      padding: 10px 13px;
+      background: linear-gradient(135deg, rgba(245,158,11,0.08), rgba(249,115,22,0.06));
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--r-lg);
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      text-decoration: none; transition: var(--t);
+    }
+    .nd-cta:hover { border-color: var(--border-strong); background: rgba(245,158,11,0.12); }
+    .nd-cta-text { font-size: 0.82rem; font-weight: 600; color: var(--text-1); }
+    .nd-cta-text span { display: block; font-size: 0.72rem; color: var(--text-3); font-weight: 400; }
+    .nd-cta-arrow { color: var(--amber); font-size: 0.75rem; }
 
     .nav-actions { display: flex; align-items: center; gap: 8px; }
 
@@ -164,22 +248,191 @@
       background: var(--text-1); border-radius: 2px; transition: var(--t);
     }
 
+    /* ── MOBILE DASHBOARD BUTTON ON NAVBAR ── */
+    .mobile-dash-btn {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: var(--r-pill);
+      background: linear-gradient(135deg, var(--amber), var(--orange));
+      color: #0C0A08;
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-decoration: none;
+      box-shadow: 0 2px 10px rgba(245,158,11,0.25);
+      transition: var(--t);
+      white-space: nowrap;
+    }
+    .mobile-dash-btn:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+    .mobile-dash-btn i {
+      font-size: 0.8rem;
+    }
+
     .mobile-menu {
       position: fixed; top: var(--nav-h); left: 0; right: 0;
       background: rgba(12,10,8,0.98); backdrop-filter: blur(24px);
       border-bottom: 1px solid var(--border-subtle);
-      padding: 20px clamp(16px,5vw,64px) 28px;
+      padding: 16px clamp(14px,4vw,32px) 24px;
       display: none; flex-direction: column; gap: 4px; z-index: 999;
-      /* FIX: hard cap to viewport width — no horizontal bleed */
       width: 100%; max-width: 100vw; overflow-x: hidden;
+      max-height: calc(100vh - var(--nav-h));
+      overflow-y: auto;
     }
     .mobile-menu.open { display: flex; }
-    .mobile-menu a {
-      font-size: 1rem; font-weight: 500; color: var(--text-2);
-      text-decoration: none; padding: 12px 14px;
-      border-radius: var(--r-md); transition: var(--t);
+
+    /* Mobile user card */
+    .mobile-user-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 16px;
+      border-radius: var(--r-lg);
+      background: var(--surface-1);
+      border: 1px solid var(--border-subtle);
+      margin-bottom: 10px;
     }
-    .mobile-menu a:hover { color: var(--text-1); background: var(--surface-1); }
+    .m-user-avatar {
+      font-size: 1.8rem;
+      color: var(--amber);
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .m-user-info {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .m-user-info strong {
+      font-size: 0.92rem;
+      color: var(--text-1);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .m-user-info span {
+      font-size: 0.74rem;
+      color: var(--text-3);
+    }
+
+    /* Mobile regular nav link */
+    .m-nav-link {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: var(--text-2);
+      text-decoration: none;
+      padding: 11px 14px;
+      border-radius: var(--r-md);
+      transition: var(--t);
+    }
+    .m-nav-link i {
+      font-size: 0.9rem;
+      color: var(--amber);
+      width: 20px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .m-nav-link:hover, .m-nav-link.active {
+      color: var(--text-1);
+      background: var(--surface-1);
+    }
+
+    /* Mobile Accordion Dropdowns */
+    .m-dropdown {
+      display: flex;
+      flex-direction: column;
+      border-radius: var(--r-md);
+      overflow: hidden;
+      transition: var(--t);
+      margin-bottom: 2px;
+    }
+    .m-dropdown-btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 11px 14px;
+      background: none;
+      border: none;
+      outline: none;
+      color: var(--text-2);
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      border-radius: var(--r-md);
+      transition: var(--t);
+      text-align: left;
+    }
+    .m-dropdown-btn span {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .m-dropdown-btn span i {
+      font-size: 0.9rem;
+      color: var(--amber);
+      width: 20px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .m-dropdown-btn .m-arrow {
+      font-size: 0.7rem;
+      color: var(--text-3);
+      transition: transform 0.25s ease;
+    }
+    .m-dropdown-btn:hover,
+    .m-dropdown.open .m-dropdown-btn {
+      color: var(--text-1);
+      background: var(--surface-1);
+    }
+    .m-dropdown.open .m-dropdown-btn .m-arrow {
+      transform: rotate(180deg);
+      color: var(--amber);
+    }
+    .m-dropdown-content {
+      display: none;
+      flex-direction: column;
+      gap: 2px;
+      padding: 4px 8px 8px 36px;
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 0 0 var(--r-md) var(--r-md);
+    }
+    .m-dropdown.open .m-dropdown-content {
+      display: flex;
+    }
+    .m-dropdown-content a {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      font-size: 0.88rem;
+      font-weight: 500;
+      color: var(--text-2);
+      text-decoration: none;
+      border-radius: var(--r-sm);
+      transition: var(--t);
+    }
+    .m-dropdown-content a i {
+      font-size: 0.82rem;
+      color: var(--amber-light);
+      width: 16px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .m-dropdown-content a:hover {
+      color: var(--text-1);
+      background: var(--surface-1);
+    }
+
     .mobile-menu .m-actions {
       display: flex; gap: 10px; margin-top: 12px; padding-top: 16px;
       border-top: 1px solid var(--border-subtle);
@@ -518,11 +771,13 @@
     }
     @media (max-width: 768px) {
       .nav-links { display: none; }
-      /* FIX: hide ALL desktop action items on mobile — the hamburger takes over */
+      /* Hide desktop-only action items on mobile */
       .nav-actions .btn-ghost,
       .nav-actions .btn-primary,
       .nav-actions .nav-username,
       .nav-actions .signout-form { display: none; }
+      /* Show mobile dashboard button */
+      .mobile-dash-btn { display: inline-flex; }
       .nav-hamburger { display: flex; }
     }
     @media (max-width: 560px) {
@@ -543,16 +798,142 @@
       TradeLink<span class="logo-ng">NG</span>
     </a>
 
-    <ul class="nav-links">
-      <li><a href="{% url 'home' %}"              class="{% block nav_home %}{% endblock %}">Home</a></li>
-      <li><a href="{% url 'marketplace:job_list' %}" class="{% block nav_jobs %}{% endblock %}">Find Work</a></li>
-      <li><a href="{% url 'marketplace:trade_list' %}" class="{% block nav_trades %}{% endblock %}">Trades</a></li>
-      <li><a href="{% url 'home' %}#employers"    class="{% block nav_employers %}{% endblock %}">Employers</a></li>
-      <li><a href="{% url 'mktplace:product_list' %}" class="{% block nav_blog %}{% endblock %}">Marketplace</a></li>
+        <ul class="nav-links">
+      <li><a href="{% url 'home' %}" class="{% block nav_home %}{% endblock %}">Home</a></li>
+
+      <!-- ABOUT dropdown -->
+      <li class="nav-dropdown">
+        <a href="{% url 'about' %}" class="nav-dropdown-trigger {% block nav_about %}{% endblock %}">
+          About <i class="fas fa-chevron-down nd-arrow"></i>
+        </a>
+        <div class="nd-panel">
+          <a href="{% url 'about' %}" class="nd-item">
+            <div class="nd-item-icon"><i class="fas fa-info-circle"></i></div>
+            <div class="nd-item-text"><strong>About TradeLink</strong><span>Our mission &amp; story</span></div>
+          </a>
+          <a href="{% url 'about' %}#how-it-works" class="nd-item">
+            <div class="nd-item-icon"><i class="fas fa-route"></i></div>
+            <div class="nd-item-text"><strong>How It Works</strong><span>Post jobs, hire, get paid</span></div>
+          </a>
+          <a href="{% url 'about' %}#verification" class="nd-item">
+            <div class="nd-item-icon"><i class="fas fa-shield-alt"></i></div>
+            <div class="nd-item-text"><strong>Trust &amp; Verification</strong><span>Blue, Gold &amp; Green badges</span></div>
+          </a>
+          <a href="{% url 'about' %}#values" class="nd-item">
+            <div class="nd-item-icon"><i class="fas fa-gem"></i></div>
+            <div class="nd-item-text"><strong>Core Values</strong><span>What drives us</span></div>
+          </a>
+          <div class="nd-sep"></div>
+          <a href="{% url 'contacts:contact_us' %}" class="nd-cta">
+            <div class="nd-cta-text">Need Help? <span>Talk to our support team</span></div>
+            <i class="fas fa-arrow-right nd-cta-arrow"></i>
+          </a>
+        </div>
+      </li>
+
+      <!-- FIND WORK dropdown -->
+      <li class="nav-dropdown">
+        <a href="{% url 'marketplace:job_list' %}" class="nav-dropdown-trigger {% block nav_jobs %}{% endblock %}">
+          Find Work <i class="fas fa-chevron-down nd-arrow"></i>
+        </a>
+        <div class="nd-panel">
+          <div class="nd-label">For Technicians</div>
+          <a href="{% url 'marketplace:job_list' %}" class="nd-item">
+            <div class="nd-item-icon"><i class="fas fa-briefcase"></i></div>
+            <div class="nd-item-text"><strong>Browse Jobs</strong><span>Active projects across Nigeria</span></div>
+          </a>
+          <a href="{% url 'marketplace:trade_list' %}" class="nd-item">
+            <div class="nd-item-icon"><i class="fas fa-hard-hat"></i></div>
+            <div class="nd-item-text"><strong>Explore Trades</strong><span>All skill categories</span></div>
+          </a>
+          <a href="{% url 'hiring:worker_profile_enhanced' %}" class="nd-item">
+            <div class="nd-item-icon"><i class="fas fa-id-card"></i></div>
+            <div class="nd-item-text"><strong>My Pro Profile</strong><span>Showcase skills &amp; badges</span></div>
+          </a>
+          <a href="{% url 'hiring:worker_inbox' %}" class="nd-item">
+            <div class="nd-item-icon"><i class="fas fa-inbox"></i></div>
+            <div class="nd-item-text"><strong>Hiring Inbox</strong><span>Employer messages &amp; offers</span></div>
+          </a>
+          <div class="nd-sep"></div>
+          <a href="{% url 'marketplace:job_create' %}" class="nd-cta">
+            <div class="nd-cta-text">Hiring Instead? <span>Post a job in 60 seconds</span></div>
+            <i class="fas fa-arrow-right nd-cta-arrow"></i>
+          </a>
+        </div>
+      </li>
+
+      <!-- EMPLOYERS dropdown -->
+      <li class="nav-dropdown">
+        <a href="{% url 'hiring:talent_search' %}" class="nav-dropdown-trigger {% block nav_employers %}{% endblock %}">
+          Employers <i class="fas fa-chevron-down nd-arrow"></i>
+        </a>
+        <div class="nd-panel">
+          <div class="nd-label">For Employers &amp; Businesses</div>
+          <a href="{% url 'marketplace:job_create' %}" class="nd-item">
+            <div class="nd-item-icon"><i class="fas fa-plus-circle"></i></div>
+            <div class="nd-item-text"><strong>Post a Job</strong><span>Reach verified artisans fast</span></div>
+          </a>
+          <a href="{% url 'hiring:talent_search' %}" class="nd-item">
+            <div class="nd-item-icon"><i class="fas fa-search"></i></div>
+            <div class="nd-item-text"><strong>Search Talent</strong><span>Browse skilled tradespeople</span></div>
+          </a>
+          <a href="{% url 'hiring:pipeline' %}" class="nd-item">
+            <div class="nd-item-icon"><i class="fas fa-filter"></i></div>
+            <div class="nd-item-text"><strong>Hiring Pipeline</strong><span>Manage your candidates</span></div>
+          </a>
+          <a href="{% url 'hiring:saved_workers' %}" class="nd-item">
+            <div class="nd-item-icon"><i class="fas fa-bookmark"></i></div>
+            <div class="nd-item-text"><strong>Saved Artisans</strong><span>Your shortlisted workers</span></div>
+          </a>
+          <a href="{% url 'marketplace:dashboard' %}" class="nd-item">
+            <div class="nd-item-icon"><i class="fas fa-tachometer-alt"></i></div>
+            <div class="nd-item-text"><strong>Dashboard</strong><span>Manage jobs &amp; milestones</span></div>
+          </a>
+          <div class="nd-sep"></div>
+          <a href="{% url 'about' %}#verification" class="nd-cta">
+            <div class="nd-cta-text">Why TradeLink? <span>Verified artisans, escrow-safe payments</span></div>
+            <i class="fas fa-arrow-right nd-cta-arrow"></i>
+          </a>
+        </div>
+      </li>
+
+      <!-- MARKETPLACE dropdown -->
+      <li class="nav-dropdown">
+        <a href="{% url 'mktplace:product_list' %}" class="nav-dropdown-trigger {% block nav_blog %}{% endblock %}">
+          Marketplace <i class="fas fa-chevron-down nd-arrow"></i>
+        </a>
+        <div class="nd-panel">
+          <div class="nd-label">Trade Tools &amp; Equipment</div>
+          <a href="{% url 'mktplace:product_list' %}" class="nd-item">
+            <div class="nd-item-icon"><i class="fas fa-store"></i></div>
+            <div class="nd-item-text"><strong>Browse Products</strong><span>Tools, safety gear &amp; more</span></div>
+          </a>
+          <a href="{% url 'mktplace:category_list' %}" class="nd-item">
+            <div class="nd-item-icon"><i class="fas fa-th-large"></i></div>
+            <div class="nd-item-text"><strong>All Categories</strong><span>Shop by equipment type</span></div>
+          </a>
+          <a href="{% url 'mktplace:product_create' %}" class="nd-item">
+            <div class="nd-item-icon"><i class="fas fa-tag"></i></div>
+            <div class="nd-item-text"><strong>Sell Equipment</strong><span>List your tools for sale</span></div>
+          </a>
+          <a href="{% url 'mktplace:seller_dashboard' %}" class="nd-item">
+            <div class="nd-item-icon"><i class="fas fa-chart-bar"></i></div>
+            <div class="nd-item-text"><strong>Seller Dashboard</strong><span>Manage your listings</span></div>
+          </a>
+          <a href="{% url 'mktplace:order_list' %}" class="nd-item">
+            <div class="nd-item-icon"><i class="fas fa-shopping-bag"></i></div>
+            <div class="nd-item-text"><strong>My Orders</strong><span>Track purchases &amp; sales</span></div>
+          </a>
+        </div>
+      </li>
+
+      <li><a href="{% url 'contacts:contact_us' %}" class="{% block nav_contacts %}{% endblock %}">Contact</a></li>
     </ul>
 
     <div class="nav-actions">
       {% if user.is_authenticated %}
+        <!-- Direct Mobile Dashboard button on navbar -->
+        
         <a href="{% url 'chats:conversation_list' %}" class="btn btn-ghost" title="Messages">
           <i class="fas fa-comment-dots"></i> Messages
         </a>
@@ -567,7 +948,8 @@
           </button>
         </form>
       {% else %}
-        <a href="{% url 'signin' %}"   class="btn btn-ghost">Sign In</a>
+        <!-- Direct Mobile Sign-In button on navbar -->
+        
         <a href="{% url 'register' %}" class="btn btn-primary">Get Started</a>
       {% endif %}
     </div>
@@ -577,14 +959,92 @@
     </button>
   </nav>
 
+  <!-- MOBILE MENU WITH ACCORDION DROPDOWNS -->
   <div class="mobile-menu" id="mobileMenu">
-    <a href="{% url 'home' %}">Home</a>
-    <a href="{% url 'marketplace:job_list' %}">Find Work</a>
-    <a href="{% url 'marketplace:trade_list' %}">Trades</a>
-    <a href="{% url 'home' %}#employers">For Employers</a>
-    <a href="{% url "mktplace:product_list" %}">Marketplace</a>
+    {% if user.is_authenticated %}
+      <div class="mobile-user-card">
+        <div class="m-user-avatar">
+          <i class="fas fa-user-circle"></i>
+        </div>
+        <div class="m-user-info">
+          <strong>Hi, {{ user.username }}</strong>
+          <span>Account Dashboard</span>
+        </div>
+        <a href="{% url 'marketplace:dashboard' %}" class="btn btn-primary btn-sm">
+          <i class="fas fa-th-large"></i> Dashboard
+        </a>
+      </div>
+    {% endif %}
+
+    <a href="{% url 'home' %}" class="m-nav-link"><i class="fas fa-home"></i> Home</a>
+
+    <!-- Mobile Dropdown: About -->
+    <div class="m-dropdown">
+      <button type="button" class="m-dropdown-btn">
+        <span><i class="fas fa-info-circle"></i> About</span>
+        <i class="fas fa-chevron-down m-arrow"></i>
+      </button>
+      <div class="m-dropdown-content">
+        <a href="{% url 'about' %}"><i class="fas fa-building"></i> About TradeLink</a>
+        <a href="{% url 'about' %}#how-it-works"><i class="fas fa-route"></i> How It Works</a>
+        <a href="{% url 'about' %}#verification"><i class="fas fa-shield-alt"></i> Trust &amp; Verification</a>
+        <a href="{% url 'about' %}#values"><i class="fas fa-gem"></i> Core Values</a>
+      </div>
+    </div>
+
+    <!-- Mobile Dropdown: Find Work -->
+    <div class="m-dropdown">
+      <button type="button" class="m-dropdown-btn">
+        <span><i class="fas fa-briefcase"></i> Find Work</span>
+        <i class="fas fa-chevron-down m-arrow"></i>
+      </button>
+      <div class="m-dropdown-content">
+        <a href="{% url 'marketplace:job_list' %}"><i class="fas fa-search"></i> Browse Jobs</a>
+        <a href="{% url 'marketplace:trade_list' %}"><i class="fas fa-hard-hat"></i> Explore Trades</a>
+        <a href="{% url 'hiring:worker_profile_enhanced' %}"><i class="fas fa-id-card"></i> My Pro Profile</a>
+        <a href="{% url 'hiring:worker_inbox' %}"><i class="fas fa-inbox"></i> Hiring Inbox</a>
+        <a href="{% url 'marketplace:job_create' %}"><i class="fas fa-plus-circle"></i> Post a Job</a>
+      </div>
+    </div>
+
+    <!-- Mobile Dropdown: Employers -->
+    <div class="m-dropdown">
+      <button type="button" class="m-dropdown-btn">
+        <span><i class="fas fa-user-tie"></i> Employers</span>
+        <i class="fas fa-chevron-down m-arrow"></i>
+      </button>
+      <div class="m-dropdown-content">
+        <a href="{% url 'marketplace:job_create' %}"><i class="fas fa-plus-circle"></i> Post a Job</a>
+        <a href="{% url 'hiring:talent_search' %}"><i class="fas fa-search"></i> Search Talent</a>
+        <a href="{% url 'hiring:pipeline' %}"><i class="fas fa-filter"></i> Hiring Pipeline</a>
+        <a href="{% url 'hiring:saved_workers' %}"><i class="fas fa-bookmark"></i> Saved Artisans</a>
+        <a href="{% url 'marketplace:dashboard' %}"><i class="fas fa-tachometer-alt"></i> Employer Dashboard</a>
+      </div>
+    </div>
+
+    <!-- Mobile Dropdown: Marketplace -->
+    <div class="m-dropdown">
+      <button type="button" class="m-dropdown-btn">
+        <span><i class="fas fa-store"></i> Marketplace</span>
+        <i class="fas fa-chevron-down m-arrow"></i>
+      </button>
+      <div class="m-dropdown-content">
+        <a href="{% url 'mktplace:product_list' %}"><i class="fas fa-boxes"></i> Browse Equipment</a>
+        <a href="{% url 'mktplace:category_list' %}"><i class="fas fa-th-large"></i> All Categories</a>
+        <a href="{% url 'mktplace:product_create' %}"><i class="fas fa-tag"></i> Sell Equipment</a>
+        <a href="{% url 'mktplace:seller_dashboard' %}"><i class="fas fa-chart-bar"></i> Seller Dashboard</a>
+        <a href="{% url 'mktplace:order_list' %}"><i class="fas fa-shopping-bag"></i> My Orders</a>
+      </div>
+    </div>
+
+    <a href="{% url 'verify:dashboard' %}" class="m-nav-link"><i class="fas fa-shield-alt"></i> Verification</a>
+    <a href="{% url 'contacts:contact_us' %}" class="m-nav-link"><i class="fas fa-headset"></i> Contact &amp; Support</a>
+
     <div class="m-actions">
       {% if user.is_authenticated %}
+        <a href="{% url 'marketplace:dashboard' %}" class="btn btn-primary" style="flex:100%;margin-bottom:4px;">
+          <i class="fas fa-tachometer-alt"></i> Go to Dashboard
+        </a>
         <a href="{% url 'chats:conversation_list' %}" class="btn btn-ghost">
           <i class="fas fa-comment-dots"></i> Messages
         </a>
@@ -647,7 +1107,8 @@
       <div>
         <p class="footer-col-title">Company</p>
         <ul class="footer-links">
-          <li><a href="#">About Us</a></li>
+          <li><a href="{% url 'about' %}">About Us</a></li>
+          <li><a href="{% url 'contacts:contact_us' %}">Help & Support</a></li>
           <li><a href="#">Blog</a></li>
           <li><a href="#">Careers</a></li>
           <li><a href="#">Privacy Policy</a></li>
@@ -660,7 +1121,7 @@
       <span style="display:flex;gap:20px;">
         <a href="#">Privacy</a>
         <a href="#">Terms</a>
-        <a href="#">Contact</a>
+        <a href="{% url 'contacts:contact_us' %}">Contact</a>
       </span>
     </div>
   </footer>
@@ -685,6 +1146,20 @@
         mobileMenu.classList.remove('open');
         hamburger.querySelectorAll('span').forEach(s => { s.style.transform = ''; s.style.opacity = ''; });
       }
+    });
+
+    // Mobile Accordion Dropdown toggle
+    document.querySelectorAll('.m-dropdown-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const parent = btn.closest('.m-dropdown');
+        const isOpen = parent.classList.contains('open');
+        // Close other open accordions
+        document.querySelectorAll('.m-dropdown.open').forEach(d => {
+          if (d !== parent) d.classList.remove('open');
+        });
+        parent.classList.toggle('open', !isOpen);
+      });
     });
   </script>
   {# ── Verification prompt banner ── #}

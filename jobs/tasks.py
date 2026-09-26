@@ -50,10 +50,163 @@ Routing (add to settings.py)
 """
 
 import logging
+from datetime import timedelta
 
 from celery import shared_task
+from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
+User = get_user_model()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  DISPUTE SLA TASKS
+# ──────────────────────────────────────────────────────────────────────────────
+
+@shared_task(
+    bind=True,
+    max_retries=1,
+    acks_late=True,
+    ignore_result=True,
+)
+def escalate_stale_disputes(self) -> None:
+    """
+    Periodic task — run every 6 hours via Celery Beat.
+
+    Phase 1 (72h+): Escalate unresolved disputes by notifying superusers.
+    Phase 2 (7d+):  Auto-release funds to worker (favours completed work).
+
+    Add to settings.py CELERY_BEAT_SCHEDULE:
+        'escalate-stale-disputes': {
+            'task': 'jobs.tasks.escalate_stale_disputes',
+            'schedule': crontab(minute=0, hour='*/6'),
+        },
+    """
+    from jobs.models import Dispute, Notification
+    from jobs.service.escrow_service import resolve_dispute, SLA_ESCALATE_HOURS, SLA_AUTO_RELEASE_DAYS
+
+    now            = timezone.now()
+    cutoff_escalate = now - timedelta(hours=SLA_ESCALATE_HOURS)
+    cutoff_release  = now - timedelta(days=SLA_AUTO_RELEASE_DAYS)
+
+    # ── Escalate disputes older than 72h ─────────────────────────────────────
+    stale_to_escalate = Dispute.objects.filter(
+        resolution=Dispute.Resolution.PENDING,
+        created_at__lte=cutoff_escalate,
+        escalated=False,
+    ).select_related('milestone__contract')
+
+    superusers = list(User.objects.filter(is_superuser=True))
+    escalated_count = 0
+
+    for dispute in stale_to_escalate:
+        milestone = dispute.milestone
+        for su in superusers:
+            Notification.objects.create(
+                user=su,
+                notif_type=Notification.NotifType.SYSTEM,
+                title=f'[URGENT] Dispute unresolved 72h+: "{milestone.title}"',
+                body=(
+                    f'Dispute on milestone "{milestone.title}" '
+                    f'(Contract: {milestone.contract.title}) has been open '
+                    f'for more than {SLA_ESCALATE_HOURS} hours without resolution. '
+                    f'Please review immediately.'
+                ),
+                data={'dispute_id': str(dispute.pk)},
+            )
+        dispute.escalated = True
+        dispute.save(update_fields=['escalated'])
+        escalated_count += 1
+
+    if escalated_count:
+        logger.warning("escalate_stale_disputes: escalated %d disputes to superusers.", escalated_count)
+
+    # ── Auto-release disputes older than 7 days ───────────────────────────────
+    auto_release = Dispute.objects.filter(
+        resolution=Dispute.Resolution.PENDING,
+        created_at__lte=cutoff_release,
+    ).select_related('milestone__contract')
+
+    released_count = 0
+    system_user = superusers[0] if superusers else None
+
+    for dispute in auto_release:
+        if system_user is None:
+            logger.error("escalate_stale_disputes: no superuser available for auto-release of dispute %s.", dispute.pk)
+            continue
+        success = resolve_dispute(
+            dispute_id=str(dispute.pk),
+            resolution=Dispute.Resolution.RELEASED_TO_WORKER,
+            resolved_by_user_id=system_user.pk,
+            resolution_note=(
+                f'Auto-released after {SLA_AUTO_RELEASE_DAYS}-day SLA breach. '
+                f'No admin action was taken within the required timeframe.'
+            ),
+        )
+        if success:
+            released_count += 1
+            logger.info("escalate_stale_disputes: auto-released dispute %s to worker.", dispute.pk)
+        else:
+            logger.error("escalate_stale_disputes: failed to auto-release dispute %s.", dispute.pk)
+
+    if released_count:
+        logger.info("escalate_stale_disputes: auto-released %d dispute(s).", released_count)
+
+
+@shared_task(
+    bind=True,
+    max_retries=1,
+    acks_late=True,
+    ignore_result=True,
+)
+def escalate_stale_order_disputes(self) -> None:
+    """
+    Same SLA logic for marketplace OrderDisputes.
+    Run on the same Celery Beat schedule as escalate_stale_disputes.
+    """
+    from marketplace.models import OrderDispute, Order, Notification as MktNotification
+    from marketplace.service.market_place_service_escrow import release_order_to_seller
+
+    now            = timezone.now()
+    cutoff_escalate = now - timedelta(hours=72)
+    cutoff_release  = now - timedelta(days=7)
+
+    superusers = list(User.objects.filter(is_superuser=True))
+
+    # ── Escalate ─────────────────────────────────────────────────────────────
+    for dispute in OrderDispute.objects.filter(
+        resolution=OrderDispute.Resolution.PENDING,
+        created_at__lte=cutoff_escalate,
+        escalated=False,
+    ).select_related('order__product'):
+        for su in superusers:
+            MktNotification.objects.create(
+                user=su,
+                notif_type=MktNotification.NotifType.SYSTEM,
+                title=f'[URGENT] Order dispute 72h+: "{dispute.order.product.title}"',
+                body=f'Order dispute on "{dispute.order.product.title}" unresolved for 72h+.',
+                data={'dispute_id': str(dispute.pk)},
+            )
+        dispute.escalated = True
+        dispute.save(update_fields=['escalated'])
+
+    # ── Auto-release ──────────────────────────────────────────────────────────
+    for dispute in OrderDispute.objects.filter(
+        resolution=OrderDispute.Resolution.PENDING,
+        created_at__lte=cutoff_release,
+    ).select_related('order'):
+        success = release_order_to_seller(str(dispute.order.pk))
+        if success:
+            dispute.resolution      = OrderDispute.Resolution.RELEASED_TO_SELLER
+            dispute.resolution_note = f'Auto-released after 7-day SLA breach.'
+            dispute.resolved_at     = now
+            dispute.save(update_fields=['resolution', 'resolution_note', 'resolved_at'])
+            logger.info("escalate_stale_order_disputes: auto-released dispute %s.", dispute.pk)
+        else:
+            logger.error("escalate_stale_order_disputes: failed to auto-release dispute %s.", dispute.pk)
+
+
 
 
 # ──────────────────────────────────────────────────────────────────────────────

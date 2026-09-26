@@ -109,3 +109,6 @@ pydantic==2.12.5
 pydantic_core==2.41.5
 annotated-types==0.7.0
 typing_extensions==4.15.0
+
+# ── QR CODE (CV PDF) ──────────────────────────────────────────────────────────
+qrcode[pil]==8.0

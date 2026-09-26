@@ -52,6 +52,8 @@ from .views import (
 
     # Dispute & review
     RaiseDisputeView,
+    PostOrderDisputeMessageView,
+    OrderMediationAgreeView,
     SubmitReviewView,
 
     # Payment callback
@@ -199,6 +201,16 @@ urlpatterns = [
         'orders/<uuid:pk>/dispute/',
         RaiseDisputeView.as_view(),
         name='order_dispute',
+    ),
+    path(
+        'disputes/<uuid:pk>/messages/',
+        PostOrderDisputeMessageView.as_view(),
+        name='dispute_messages',
+    ),
+    path(
+        'disputes/<uuid:pk>/mediate/',
+        OrderMediationAgreeView.as_view(),
+        name='dispute_mediate',
     ),
     path(
         'disputes/<uuid:pk>/resolve/',

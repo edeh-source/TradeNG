@@ -36,6 +36,7 @@ from .models import (
     Milestone,
     WorkerBankAccount,
     Dispute,
+    DisputeMessage,
 )
 
 
@@ -652,15 +653,27 @@ class MilestoneAdmin(admin.ModelAdmin):
 #  DISPUTE
 # ──────────────────────────────────────────────────────────────────────────────
 
+class DisputeMessageInline(admin.TabularInline):
+    model = DisputeMessage
+    extra = 0
+    readonly_fields = ['author', 'body', 'attachment', 'attachment_sha256', 'is_admin_note', 'created_at']
+    can_delete = False
+
+
 @admin.register(Dispute)
 class DisputeAdmin(admin.ModelAdmin):
-    list_display  = ['milestone', 'raised_by', 'resolution', 'resolved_at', 'created_at']
-    list_filter   = ['resolution']
-    search_fields = ['milestone__title', 'raised_by__username', 'reason']
-    readonly_fields = [
-        'id', 'milestone', 'raised_by', 'evidence',
-        'resolved_at', 'resolved_by', 'created_at',
+    list_display  = [
+        'milestone', 'raised_by', 'resolution', 'split_worker_pct',
+        'escalated', 'mediation_deadline', 'resolved_at', 'created_at',
     ]
+    list_filter   = ['resolution', 'escalated']
+    search_fields = ['milestone__title', 'raised_by__username', 'reason', 'evidence_sha256']
+    readonly_fields = [
+        'id', 'milestone', 'raised_by', 'evidence', 'evidence_sha256',
+        'mediation_deadline', 'mediation_employer_agreed', 'mediation_worker_agreed',
+        'auto_release_at', 'escalated', 'resolved_at', 'resolved_by', 'created_at',
+    ]
+    inlines = [DisputeMessageInline]
     date_hierarchy = 'created_at'
 
 

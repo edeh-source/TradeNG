@@ -133,7 +133,9 @@ def process_order_payout_task(self, order_id: str) -> None:
 
     logger.info("Task: process_order_payout for %s", order_id)
     try:
-        release_order_to_seller(order_id)
+        success = release_order_to_seller(order_id)
+        if not success:
+            raise RuntimeError(f"release_order_to_seller returned False for order {order_id}")
     except Exception as exc:
         logger.exception("Task: process_order_payout failed for %s", order_id)
         raise self.retry(exc=exc)

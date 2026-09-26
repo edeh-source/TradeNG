@@ -210,7 +210,7 @@ class BankAccountProfileView(LoginRequiredMixin, View):
         worker_profile = getattr(request.user, 'worker_profile', None)
         if not worker_profile:
             # Auto-create a minimal WorkerProfile for marketplace sellers too
-            from users.models import WorkerProfile
+            from jobs.models import WorkerProfile
             worker_profile, _ = WorkerProfile.objects.get_or_create(user=request.user)
 
         bank_account, created = WorkerBankAccount.objects.update_or_create(

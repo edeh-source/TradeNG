@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}
-  Chat with {{ other_user.get_full_name|default:other_user.username }}
+  Chat with {% if other_user %}{{ other_user.get_full_name|default:other_user.username }}{% else %}User{% endif %}
   {% if conversation.product %} — {{ conversation.product.title|truncatechars:30 }}{% endif %}
   | TradeLink NG
 {% endblock %}
@@ -8,13 +8,13 @@
 {% block extra_head %}
 <style>
   /* =====================================================
-     CHATS — CONVERSATION DETAIL (CHAT ROOM)
+     CHATS — CONVERSATION DETAIL  (v2)
   ===================================================== */
 
-  /* Full-height layout: navbar + chat fill viewport */
   .site-footer { display: none !important; }
   body { overflow: hidden !important; }
 
+  /* ── Full-height layout ─────────────────────────── */
   .chat-page {
     position: fixed;
     top: var(--nav-h); left: 0; right: 0; bottom: 0;
@@ -23,22 +23,42 @@
     z-index: 1;
   }
 
+  /* ── WS RECONNECT BANNER ─────────────────────────── */
+  #wsBanner {
+    display: none; align-items: center; justify-content: center; gap: 8px;
+    padding: 8px 16px;
+    background: rgba(245,158,11,0.1);
+    border-bottom: 1px solid rgba(245,158,11,0.2);
+    font-size: 0.78rem; color: var(--amber);
+    flex-shrink: 0; animation: none;
+  }
+  #wsBanner.visible { display: flex; }
+  .ws-spinner {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid rgba(245,158,11,0.3);
+    border-top-color: var(--amber);
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
   /* ── HEADER ─────────────────────────────────────── */
   .chat-header {
     flex-shrink: 0;
     display: flex; align-items: center; gap: 12px;
-    padding: 12px 20px;
+    padding: 10px 16px;
     background: var(--bg-raised);
     border-bottom: 1px solid var(--border-subtle);
-    min-height: 64px;
+    min-height: 62px;
   }
 
   .chat-back {
     display: flex; align-items: center; justify-content: center;
-    width: 36px; height: 36px; border-radius: var(--r-md);
+    width: 38px; height: 38px; border-radius: var(--r-md);
     background: var(--surface-1); border: 1px solid var(--border-subtle);
     color: var(--text-2); text-decoration: none;
     transition: var(--t); flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
   }
   .chat-back:hover { background: var(--surface-2); color: var(--text-1); }
 
@@ -57,14 +77,14 @@
   }
   .chat-header-status {
     display: flex; align-items: center; gap: 6px;
-    font-size: 0.76rem; color: var(--text-3); margin-top: 1px;
+    font-size: 0.74rem; color: var(--text-3); margin-top: 1px;
   }
   .presence-dot {
     width: 7px; height: 7px; border-radius: 50%;
     flex-shrink: 0; transition: background 0.4s;
   }
-  .presence-dot.online  { background: var(--emerald); }
-  .presence-dot.offline { background: rgba(250,245,235,0.25); }
+  .presence-dot.online  { background: var(--emerald); box-shadow: 0 0 0 2px rgba(16,185,129,0.25); }
+  .presence-dot.offline { background: rgba(250,245,235,0.2); }
 
   /* Product context pill */
   .chat-product-ctx {
@@ -73,7 +93,7 @@
     background: var(--surface-1); border: 1px solid var(--border-subtle);
     border-radius: var(--r-md);
     text-decoration: none; color: inherit;
-    transition: var(--t); max-width: 220px;
+    transition: var(--t); max-width: 200px;
   }
   .chat-product-ctx:hover { border-color: var(--border-strong); background: var(--surface-2); }
   .chat-product-img {
@@ -87,29 +107,29 @@
     flex-shrink: 0; color: var(--text-3); font-size: 0.75rem;
   }
   .chat-product-info { min-width: 0; }
-  .chat-product-label { font-size: 0.64rem; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.8px; }
+  .chat-product-label { font-size: 0.62rem; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.8px; }
   .chat-product-name {
-    font-size: 0.78rem; font-weight: 600; color: var(--text-1);
+    font-size: 0.76rem; font-weight: 600; color: var(--text-1);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .chat-product-price { font-size: 0.72rem; color: var(--amber); font-weight: 700; }
+  .chat-product-price { font-size: 0.7rem; color: var(--amber); font-weight: 700; }
 
   /* ── MESSAGES AREA ─────────────────────────────── */
   .chat-messages {
     flex: 1; overflow-y: auto; overflow-x: hidden;
-    padding: 20px 20px 8px;
-    display: flex; flex-direction: column; gap: 6px;
+    padding: 16px 16px 8px;
+    display: flex; flex-direction: column; gap: 2px;
     scroll-behavior: smooth;
+    overscroll-behavior: contain;
   }
-  /* Custom scrollbar */
-  .chat-messages::-webkit-scrollbar { width: 5px; }
+  .chat-messages::-webkit-scrollbar { width: 4px; }
   .chat-messages::-webkit-scrollbar-track { background: transparent; }
-  .chat-messages::-webkit-scrollbar-thumb { background: rgba(245,158,11,0.2); border-radius: 4px; }
+  .chat-messages::-webkit-scrollbar-thumb { background: rgba(245,158,11,0.15); border-radius: 4px; }
 
   /* Load more button */
   #loadMoreBtn {
-    align-self: center; margin-bottom: 12px;
-    padding: 7px 18px;
+    align-self: center; margin-bottom: 16px;
+    padding: 8px 20px;
     background: var(--surface-1); border: 1px solid var(--border-subtle);
     border-radius: var(--r-pill);
     color: var(--text-2); font-family: 'Outfit', sans-serif;
@@ -117,78 +137,94 @@
     transition: var(--t);
   }
   #loadMoreBtn:hover { background: var(--surface-2); border-color: var(--border-strong); color: var(--text-1); }
-  #loadMoreBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+  #loadMoreBtn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   /* Date divider */
   .date-divider {
-    display: flex; align-items: center; gap: 12px;
-    margin: 14px 0 6px; align-self: stretch;
+    display: flex; align-items: center; gap: 10px;
+    margin: 18px 0 10px; align-self: stretch; flex-shrink: 0;
   }
   .date-divider::before, .date-divider::after {
     content: ''; flex: 1; height: 1px; background: var(--border-subtle);
   }
   .date-divider span {
-    font-size: 0.72rem; color: var(--text-3); white-space: nowrap; font-weight: 500;
+    font-size: 0.71rem; color: var(--text-3); white-space: nowrap;
+    font-weight: 600; letter-spacing: 0.4px;
+    background: var(--bg-base); padding: 0 8px;
   }
 
   /* ── MESSAGE ROWS ──────────────────────────────── */
   .msg-row {
     display: flex; align-items: flex-end; gap: 8px;
     max-width: 100%;
+    animation: msgIn 0.2s ease both;
+  }
+  @keyframes msgIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
   .msg-row-own   { flex-direction: row-reverse; align-self: flex-end; }
   .msg-row-other { flex-direction: row;         align-self: flex-start; }
   .msg-row-system { align-self: center; margin: 8px 0; }
 
-  /* Sender avatar (small, for other user only) */
+  /* Consecutive messages — reduce gap */
+  .msg-row + .msg-row { margin-top: 3px; }
+  .msg-row-system + .msg-row,
+  .msg-row + .msg-row-system { margin-top: 8px; }
+
+  /* Sender avatar (other user only) */
   .msg-avatar {
-    width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+    width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0;
     background: linear-gradient(135deg, var(--amber), var(--orange));
     display: flex; align-items: center; justify-content: center;
-    font-size: 0.68rem; font-weight: 800; color: #0C0A08;
+    font-size: 0.65rem; font-weight: 800; color: #0C0A08;
     align-self: flex-end; margin-bottom: 2px;
   }
+  /* Hide avatar for consecutive messages from same sender */
+  .msg-row-other.hide-avatar .msg-avatar { visibility: hidden; }
 
   /* System message */
   .system-msg {
     display: inline-block;
-    padding: 6px 16px;
-    background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.15);
+    padding: 5px 14px;
+    background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.14);
     border-radius: var(--r-pill);
-    font-size: 0.78rem; color: rgba(56,189,248,0.8);
-    text-align: center; max-width: 520px; line-height: 1.5;
+    font-size: 0.76rem; color: rgba(56,189,248,0.75);
+    text-align: center; max-width: 480px; line-height: 1.5;
   }
 
-  /* ── BUBBLE ── */
-  .msg-bubble-wrap { position: relative; max-width: 72%; min-width: 0; }
+  /* ── BUBBLE ─────────────────────────────────────── */
+  .msg-bubble-wrap { position: relative; max-width: 78%; min-width: 0; }
 
   .msg-bubble {
-    padding: 10px 14px;
+    padding: 9px 13px;
     border-radius: 18px;
     line-height: 1.55; word-break: break-word;
     position: relative;
   }
   .bubble-own {
-    background: linear-gradient(135deg, rgba(245,158,11,0.22), rgba(249,115,22,0.18));
-    border: 1px solid rgba(245,158,11,0.25);
-    border-bottom-right-radius: 4px;
+    background: linear-gradient(135deg, rgba(245,158,11,0.24), rgba(249,115,22,0.18));
+    border: 1px solid rgba(245,158,11,0.28);
+    border-bottom-right-radius: 5px;
   }
   .bubble-other {
     background: var(--bg-card);
     border: 1px solid var(--border-subtle);
-    border-bottom-left-radius: 4px;
+    border-bottom-left-radius: 5px;
   }
 
   .msg-body { font-size: 0.9rem; color: var(--text-1); white-space: pre-wrap; }
-  .deleted-notice { font-style: italic; color: var(--text-3); font-size: 0.85rem; }
+  .deleted-notice { font-style: italic; color: var(--text-3); font-size: 0.84rem; }
 
   .msg-meta {
-    display: flex; align-items: center; gap: 5px;
+    display: flex; align-items: center; gap: 4px;
     margin-top: 4px; justify-content: flex-end;
   }
-  .msg-time  { font-size: 0.68rem; color: var(--text-3); }
-  .msg-edited { font-size: 0.64rem; color: var(--text-3); font-style: italic; }
-  .msg-tick  { font-size: 0.68rem; color: var(--text-3); }
+  .msg-time  { font-size: 0.67rem; color: var(--text-3); cursor: default; }
+  .msg-edited { font-size: 0.63rem; color: var(--text-3); font-style: italic; }
+  .msg-tick  { font-size: 0.67rem; }
+  .msg-tick .unread { color: var(--text-3); }
+  .msg-tick .read   { color: var(--sky); }
 
   /* Image attachments */
   .msg-img-grid {
@@ -199,16 +235,16 @@
     border-radius: 10px; cursor: pointer; object-fit: cover;
     transition: var(--t); border: 1px solid var(--border-subtle);
   }
-  .msg-img-grid img:hover { opacity: 0.88; transform: scale(0.98); }
+  .msg-img-grid img:hover { opacity: 0.85; transform: scale(0.98); }
 
-  /* Actions menu */
+  /* Actions menu (hover) */
   .msg-actions-menu {
     display: none; align-items: center; gap: 4px;
-    align-self: center; margin: 0 4px;
+    align-self: center; margin: 0 2px;
   }
   .msg-row:hover .msg-actions-menu { display: flex; }
   .msg-action {
-    width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+    width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
     background: var(--surface-1); border: 1px solid var(--border-subtle);
     color: var(--text-3); cursor: pointer; font-size: 0.7rem;
     display: flex; align-items: center; justify-content: center;
@@ -234,13 +270,14 @@
   .edit-btn-cancel { background: var(--surface-1); border-color: var(--border-subtle); color: var(--text-2); }
   .edit-btn-save   { background: linear-gradient(135deg, var(--amber), var(--orange)); color: #0C0A08; }
 
-  /* ── TYPING INDICATOR ────────────────────────── */
+  /* ── TYPING INDICATOR ──────────────────────────── */
   #typingIndicator {
-    display: none; align-items: center; gap: 6px;
-    padding: 8px 14px; width: fit-content;
+    display: none; align-items: center; gap: 8px;
+    padding: 8px 13px; width: fit-content;
     background: var(--bg-card); border: 1px solid var(--border-subtle);
-    border-radius: 18px; border-bottom-left-radius: 4px;
-    align-self: flex-start;
+    border-radius: 18px; border-bottom-left-radius: 5px;
+    align-self: flex-start; margin-top: 4px;
+    animation: msgIn 0.2s ease both;
   }
   .typing-dots { display: flex; gap: 4px; }
   .typing-dot {
@@ -251,10 +288,32 @@
   .typing-dot:nth-child(3) { animation-delay: 0.30s; }
   @keyframes bounce {
     0%, 60%, 100% { transform: translateY(0); }
-    30%            { transform: translateY(-6px); }
+    30%            { transform: translateY(-5px); }
+  }
+  .typing-label { font-size: 0.73rem; color: var(--text-3); }
+
+  /* ── SCROLL-TO-BOTTOM FAB ──────────────────────── */
+  #scrollFab {
+    position: absolute; bottom: 16px; right: 16px;
+    width: 38px; height: 38px; border-radius: 50%;
+    background: var(--bg-raised); border: 1px solid var(--border-strong);
+    color: var(--text-2); cursor: pointer;
+    display: none; align-items: center; justify-content: center;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    transition: var(--t); z-index: 10; font-size: 0.85rem;
+  }
+  #scrollFab.visible { display: flex; }
+  #scrollFab:hover { background: var(--surface-2); color: var(--text-1); }
+  #scrollFab .fab-badge {
+    position: absolute; top: -5px; right: -5px;
+    min-width: 16px; height: 16px; padding: 0 4px;
+    background: var(--amber); color: #0C0A08;
+    font-size: 0.6rem; font-weight: 800;
+    border-radius: var(--r-pill);
+    display: flex; align-items: center; justify-content: center;
   }
 
-  /* ── INPUT BAR ────────────────────────────────── */
+  /* ── INPUT BAR ─────────────────────────────────── */
   .chat-input-area {
     flex-shrink: 0;
     background: var(--bg-raised);
@@ -268,11 +327,11 @@
   }
   .preview-item { position: relative; }
   .preview-item img {
-    width: 60px; height: 60px; border-radius: 8px;
+    width: 58px; height: 58px; border-radius: 8px;
     object-fit: cover; border: 1px solid var(--border-subtle);
   }
   .preview-remove {
-    position: absolute; top: -6px; right: -6px;
+    position: absolute; top: -5px; right: -5px;
     width: 18px; height: 18px; border-radius: 50%;
     background: #ef4444; color: #fff; border: none;
     font-size: 0.7rem; cursor: pointer; line-height: 1;
@@ -281,7 +340,7 @@
 
   .chat-input-row {
     display: flex; align-items: flex-end; gap: 8px;
-    padding: 12px 16px;
+    padding: 10px 14px 10px;
   }
 
   .input-icon-btn {
@@ -289,20 +348,31 @@
     width: 40px; height: 40px; border-radius: var(--r-md); flex-shrink: 0;
     background: var(--surface-1); border: 1px solid var(--border-subtle);
     color: var(--text-2); cursor: pointer; transition: var(--t);
+    -webkit-tap-highlight-color: transparent;
   }
   .input-icon-btn:hover { background: var(--surface-2); color: var(--amber); border-color: var(--border-strong); }
 
+  .input-wrap { flex: 1; position: relative; min-width: 0; }
   #msgInput {
-    flex: 1; padding: 10px 14px; min-height: 42px; max-height: 120px;
+    width: 100%; padding: 10px 14px; min-height: 42px; max-height: 120px;
     background: rgba(255,255,255,0.04);
     border: 1px solid var(--border-subtle);
     border-radius: 21px;
     color: var(--text-1); font-family: 'Outfit', sans-serif; font-size: 0.92rem;
     resize: none; outline: none; line-height: 1.4; overflow-y: auto;
     transition: border-color 0.2s;
+    display: block;
   }
   #msgInput::placeholder { color: var(--text-3); }
   #msgInput:focus { border-color: rgba(245,158,11,0.4); }
+
+  #charCount {
+    position: absolute; bottom: 6px; right: 12px;
+    font-size: 0.62rem; color: var(--text-3);
+    pointer-events: none; transition: color 0.2s;
+  }
+  #charCount.warn  { color: rgba(249,115,22,0.8); }
+  #charCount.limit { color: #FCA5A5; }
 
   #sendBtn {
     width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
@@ -310,14 +380,16 @@
     border: none; cursor: pointer; color: #0C0A08; font-size: 0.95rem;
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 4px 16px rgba(245,158,11,0.3); transition: var(--t);
+    -webkit-tap-highlight-color: transparent;
   }
-  #sendBtn:hover { box-shadow: 0 6px 20px rgba(245,158,11,0.45); transform: scale(1.05); }
-  #sendBtn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+  #sendBtn:hover { box-shadow: 0 6px 20px rgba(245,158,11,0.45); transform: scale(1.06); }
+  #sendBtn:active { transform: scale(0.96); }
+  #sendBtn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
 
-  /* ── LIGHTBOX ─────────────────────────────────── */
+  /* ── LIGHTBOX ──────────────────────────────────── */
   #lightbox {
     display: none; position: fixed; inset: 0; z-index: 9000;
-    background: rgba(0,0,0,0.92); backdrop-filter: blur(12px);
+    background: rgba(0,0,0,0.94); backdrop-filter: blur(16px);
     align-items: center; justify-content: center; cursor: zoom-out;
   }
   #lightbox img {
@@ -327,14 +399,14 @@
   }
   #lightboxClose {
     position: absolute; top: 20px; right: 24px;
-    width: 40px; height: 40px; border-radius: 50%;
+    width: 42px; height: 42px; border-radius: 50%;
     background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
     color: #fff; cursor: pointer; font-size: 1rem;
     display: flex; align-items: center; justify-content: center; transition: var(--t);
   }
   #lightboxClose:hover { background: rgba(255,255,255,0.2); }
 
-  /* ── TOASTS ───────────────────────────────────── */
+  /* ── TOASTS ────────────────────────────────────── */
   #chatToasts {
     position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
     display: flex; flex-direction: column; align-items: center; gap: 8px;
@@ -342,31 +414,35 @@
   }
   .chat-toast {
     padding: 10px 20px; border-radius: var(--r-pill);
-    font-size: 0.85rem; font-weight: 600;
+    font-size: 0.84rem; font-weight: 600;
     animation: fadeUp 0.3s ease both;
-    pointer-events: auto;
+    pointer-events: auto; white-space: nowrap;
+  }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
   .toast-error   { background: rgba(239,68,68,0.15);  border: 1px solid rgba(239,68,68,0.3);  color: #FCA5A5; }
   .toast-success { background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.25); color: #6EE7B7; }
   .toast-info    { background: rgba(56,189,248,0.1);  border: 1px solid rgba(56,189,248,0.22); color: #7DD3FC; }
 
-  /* ── WS RECONNECT BANNER ─────────────────────── */
-  #wsBanner {
-    display: none; align-items: center; justify-content: center; gap: 8px;
-    padding: 7px; background: rgba(245,158,11,0.08); border-bottom: 1px solid rgba(245,158,11,0.2);
-    font-size: 0.78rem; color: var(--amber); flex-shrink: 0;
+  /* ── MESSAGES CONTAINER (relative for FAB) ─────── */
+  .messages-wrap {
+    flex: 1; position: relative; overflow: hidden;
+    display: flex; flex-direction: column;
   }
 
-  /* ── RESPONSIVE ──────────────────────────────── */
+  /* ── RESPONSIVE ─────────────────────────────────── */
   @media (max-width: 640px) {
     .chat-product-ctx { display: none; }
-    .chat-messages    { padding: 14px 12px 6px; }
-    .msg-bubble-wrap  { max-width: 86%; }
-    .chat-input-row   { padding: 10px 12px; }
+    .chat-messages    { padding: 12px 10px 6px; }
+    .msg-bubble-wrap  { max-width: 88%; }
+    .chat-input-row   { padding: 8px 10px 10px; }
+    #msgInput { font-size: 0.9rem; }
   }
   @media (max-width: 380px) {
-    .chat-header { padding: 10px 12px; gap: 8px; }
-    .msg-bubble-wrap { max-width: 92%; }
+    .chat-header  { padding: 8px 10px; gap: 8px; min-height: 56px; }
+    .msg-bubble-wrap { max-width: 93%; }
   }
 </style>
 {% endblock %}
@@ -376,8 +452,8 @@
 
   <!-- WS reconnecting banner -->
   <div id="wsBanner">
-    <i class="fas fa-wifi" style="opacity:0.7;"></i>
-    Reconnecting…
+    <div class="ws-spinner"></div>
+    Reconnecting to chat…
   </div>
 
   <!-- ── HEADER ── -->
@@ -387,12 +463,12 @@
     </a>
 
     <div class="chat-header-avatar">
-      {{ other_user.get_full_name|default:other_user.username|slice:":1"|upper }}
+      {% if other_user %}{{ other_user.get_full_name|default:other_user.username|slice:":1"|upper }}{% else %}?{% endif %}
     </div>
 
     <div class="chat-header-info">
       <div class="chat-header-name">
-        {{ other_user.get_full_name|default:other_user.username }}
+        {% if other_user %}{{ other_user.get_full_name|default:other_user.username }}{% else %}Deleted account{% endif %}
       </div>
       <div class="chat-header-status">
         <span class="presence-dot {% if other_online %}online{% else %}offline{% endif %}" id="presenceDot"></span>
@@ -412,7 +488,7 @@
       {% endif %}
       <div class="chat-product-info">
         <div class="chat-product-label">About</div>
-        <div class="chat-product-name">{{ conversation.product.title|truncatechars:28 }}</div>
+        <div class="chat-product-name">{{ conversation.product.title|truncatechars:26 }}</div>
         <div class="chat-product-price">₦{{ conversation.product.price|floatformat:0 }}</div>
       </div>
     </a>
@@ -420,123 +496,147 @@
   </div>
   <!-- /HEADER -->
 
-  <!-- ── MESSAGES ── -->
-  <div class="chat-messages" id="chatMessages">
+  <!-- ── MESSAGES WRAPPER (relative, for scroll FAB) ── -->
+  <div class="messages-wrap">
 
-    <!-- Load older messages -->
-    {% if has_older %}
-    <button id="loadMoreBtn" onclick="loadOlder()">
-      <i class="fas fa-chevron-up" style="margin-right:6px;font-size:0.7rem;"></i>
-      Load older messages
-    </button>
-    {% endif %}
+    <div class="chat-messages" id="chatMessages">
 
-    <!-- Server-rendered message history -->
-    {% for msg in messages %}
-
-      {% if msg.message_type == 'system' %}
-      <!-- System message -->
-      <div class="msg-row-system" data-id="{{ msg.pk }}">
-        <span class="system-msg">{{ msg.body }}</span>
-      </div>
-
-      {% else %}
-      <div class="msg-row {% if msg.sender == request.user %}msg-row-own{% else %}msg-row-other{% endif %}"
-           data-id="{{ msg.pk }}">
-
-        {% if msg.sender != request.user %}
-        <div class="msg-avatar" title="{{ msg.sender.get_full_name|default:msg.sender.username }}">
-          {{ msg.sender.get_full_name|default:msg.sender.username|slice:":1"|upper }}
-        </div>
-        {% endif %}
-
-        <!-- Hover actions -->
-        {% if msg.sender == request.user and not msg.is_deleted %}
-        <div class="msg-actions-menu">
-          {% if msg.message_type == 'text' %}
-          <button class="msg-action"
-                  title="Edit"
-                  onclick="startEdit('{{ msg.pk }}')">
-            <i class="fas fa-pencil"></i>
-          </button>
-          {% endif %}
-          <button class="msg-action msg-action-del"
-                  title="Delete"
-                  onclick="deleteMsg('{{ msg.pk }}')">
-            <i class="fas fa-trash"></i>
-          </button>
-        </div>
-        {% endif %}
-
-        <div class="msg-bubble-wrap">
-          <div class="msg-bubble {% if msg.sender == request.user %}bubble-own{% else %}bubble-other{% endif %}">
-
-            <!-- Attachments -->
-            {% if msg.attachments.all %}
-            <div class="msg-img-grid">
-              {% for att in msg.attachments.all %}
-              <img src="{{ att.file.url }}"
-                   alt="{{ att.original_name|default:'Image' }}"
-                   onclick="openLightbox('{{ att.file.url }}')"
-                   loading="lazy">
-              {% endfor %}
-            </div>
-            {% endif %}
-
-            <!-- Body -->
-            {% if not msg.is_deleted %}
-              {% if msg.body %}
-              <p class="msg-body"
-                 {% if msg.sender == request.user and msg.message_type == 'text' %}
-                 ondblclick="startEdit('{{ msg.pk }}')"
-                 title="Double-click to edit"
-                 {% endif %}>{{ msg.body }}</p>
-              {% endif %}
-            {% else %}
-              <p class="msg-body"><em class="deleted-notice">This message was deleted</em></p>
-            {% endif %}
-
-            <!-- Meta -->
-            <div class="msg-meta">
-              {% if msg.is_edited %}<span class="msg-edited">edited</span>{% endif %}
-              <span class="msg-time">{{ msg.created_at|time:"H:i" }}</span>
-              {% if msg.sender == request.user %}
-              <span class="msg-tick" title="Sent">
-                <i class="fas fa-check{% if msg.read_receipts.all %}-double" style="color:var(--sky){% endif %}"></i>
-              </span>
-              {% endif %}
-            </div>
-
-          </div>
-        </div>
-      </div>
+      <!-- Load older messages -->
+      {% if has_older %}
+      <button id="loadMoreBtn" onclick="loadOlder()">
+        <i class="fas fa-chevron-up" style="margin-right:6px;font-size:0.68rem;"></i>
+        Load older messages
+      </button>
       {% endif %}
 
-    {% empty %}
-    <div style="flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;padding:40px;">
-      <div style="width:56px;height:56px;border-radius:16px;background:var(--surface-1);border:1px solid var(--border-subtle);display:flex;align-items:center;justify-content:center;">
-        <i class="fas fa-comment-dots" style="font-size:1.4rem;color:var(--text-3);"></i>
-      </div>
-      <p style="color:var(--text-3);font-size:0.88rem;text-align:center;">
-        No messages yet.<br>Say something to <strong style="color:var(--amber);">{{ other_user.get_full_name|default:other_user.username }}</strong>!
-      </p>
-    </div>
-    {% endfor %}
+      {% now "Y-m-d" as today %}
+      <!-- Server-rendered message history -->
+      {% for msg in messages %}
 
-    <!-- Typing indicator -->
-    <div id="typingIndicator" style="align-self:flex-start;">
-      <div class="typing-dots">
-        <div class="typing-dot"></div>
-        <div class="typing-dot"></div>
-        <div class="typing-dot"></div>
+        {% if msg.message_type == 'system' %}
+        <!-- System message -->
+        <div class="msg-row-system" data-id="{{ msg.pk }}">
+          <span class="system-msg">{{ msg.body }}</span>
+        </div>
+
+        {% else %}
+        <!-- Date divider when day changes -->
+        {% ifchanged msg.created_at|date:"Y-m-d" %}
+        <div class="date-divider">
+          <span>
+            {% if msg.created_at|date:"Y-m-d" == today %}Today
+            {% else %}{{ msg.created_at|date:"D, d M Y" }}{% endif %}
+          </span>
+        </div>
+        {% endifchanged %}
+
+        <div class="msg-row {% if msg.sender == request.user %}msg-row-own{% else %}msg-row-other{% endif %}"
+             data-id="{{ msg.pk }}"
+             data-sender="{{ msg.sender.pk }}"
+             data-ts="{{ msg.created_at|date:'Y-m-d' }}">
+
+          {% if msg.sender != request.user %}
+          <div class="msg-avatar" title="{{ msg.sender.get_full_name|default:msg.sender.username }}">
+            {{ msg.sender.get_full_name|default:msg.sender.username|slice:":1"|upper }}
+          </div>
+          {% endif %}
+
+          <!-- Hover actions -->
+          {% if msg.sender == request.user and not msg.is_deleted %}
+          <div class="msg-actions-menu">
+            {% if msg.message_type == 'text' %}
+            <button class="msg-action" title="Edit" onclick="startEdit('{{ msg.pk }}')">
+              <i class="fas fa-pencil"></i>
+            </button>
+            {% endif %}
+            <button class="msg-action msg-action-del" title="Delete" onclick="deleteMsg('{{ msg.pk }}')">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
+          {% endif %}
+
+          <div class="msg-bubble-wrap">
+            <div class="msg-bubble {% if msg.sender == request.user %}bubble-own{% else %}bubble-other{% endif %}">
+
+              <!-- Attachments -->
+              {% if msg.attachments.all %}
+              <div class="msg-img-grid">
+                {% for att in msg.attachments.all %}
+                <img src="{{ att.file.url }}"
+                     alt="{{ att.original_name|default:'Image' }}"
+                     onclick="openLightbox('{{ att.file.url }}')"
+                     loading="lazy">
+                {% endfor %}
+              </div>
+              {% endif %}
+
+              <!-- Body -->
+              {% if not msg.is_deleted %}
+                {% if msg.body %}
+                <p class="msg-body"
+                   {% if msg.sender == request.user and msg.message_type == 'text' %}
+                   ondblclick="startEdit('{{ msg.pk }}')"
+                   title="Double-click to edit"
+                   {% endif %}>{{ msg.body }}</p>
+                {% endif %}
+              {% else %}
+                <p class="msg-body"><em class="deleted-notice">This message was deleted</em></p>
+              {% endif %}
+
+              <!-- Meta -->
+              <div class="msg-meta">
+                {% if msg.is_edited %}<span class="msg-edited">edited</span>{% endif %}
+                <span class="msg-time" title="{{ msg.created_at|date:'D d M Y, H:i' }}">{{ msg.created_at|time:"H:i" }}</span>
+                {% if msg.sender == request.user %}
+                <span class="msg-tick">
+                  {% if msg.read_receipts.all %}
+                  <i class="fas fa-check-double read"></i>
+                  {% else %}
+                  <i class="fas fa-check unread"></i>
+                  {% endif %}
+                </span>
+                {% endif %}
+              </div>
+
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
+      {% empty %}
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:40px;">
+        <div style="width:60px;height:60px;border-radius:18px;background:var(--surface-1);border:1px solid var(--border-subtle);display:flex;align-items:center;justify-content:center;">
+          <i class="fas fa-comment-dots" style="font-size:1.5rem;color:var(--text-3);"></i>
+        </div>
+        <p style="color:var(--text-3);font-size:0.88rem;text-align:center;line-height:1.6;">
+          No messages yet.<br>Say something to <strong style="color:var(--amber);">{% if other_user %}{{ other_user.get_full_name|default:other_user.username }}{% else %}this user{% endif %}</strong>!
+        </p>
       </div>
-      <span style="font-size:0.75rem;color:var(--text-3);margin-left:4px;">
-        {{ other_user.get_full_name|default:other_user.username }} is typing
-      </span>
+      {% endfor %}
+
+      <!-- Typing indicator -->
+      <div id="typingIndicator">
+        <div class="typing-dots">
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+        </div>
+        <span class="typing-label">
+          {% if other_user %}{{ other_user.get_full_name|default:other_user.username }}{% else %}Someone{% endif %} is typing…
+        </span>
+      </div>
+
     </div>
+    <!-- /chat-messages -->
+
+    <!-- Scroll-to-bottom FAB -->
+    <button id="scrollFab" title="Scroll to latest" onclick="scrollBottom(true)">
+      <i class="fas fa-chevron-down"></i>
+      <span class="fab-badge" id="fabBadge" style="display:none;"></span>
+    </button>
 
   </div>
-  <!-- /MESSAGES -->
+  <!-- /messages-wrap -->
 
   <!-- ── INPUT AREA ── -->
   <div class="chat-input-area">
@@ -553,13 +653,17 @@
                style="display:none;" multiple>
       </label>
 
-      <!-- Text input -->
-      <textarea
-        id="msgInput"
-        placeholder="Type a message…"
-        rows="1"
-        aria-label="Message input"
-      ></textarea>
+      <!-- Text input + char counter -->
+      <div class="input-wrap">
+        <textarea
+          id="msgInput"
+          placeholder="Type a message…"
+          rows="1"
+          maxlength="4000"
+          aria-label="Message input"
+        ></textarea>
+        <span id="charCount"></span>
+      </div>
 
       <!-- Send button -->
       <button id="sendBtn" title="Send (Enter)" aria-label="Send">
@@ -584,7 +688,6 @@
 <!-- ── TOASTS ── -->
 <div id="chatToasts"></div>
 
-<!-- Hidden file input (legacy — imgBtn label handles it) -->
 {% endblock %}
 
 {% block extra_scripts %}
@@ -593,25 +696,28 @@
   'use strict';
 
   /* ── Constants ─────────────────────────────────────────────────── */
-  const CONVERSATION_ID  = '{{ conversation.pk }}';
-  const CURRENT_USER_ID  = '{{ request.user.pk }}';
-  const OTHER_USER_ID    = '{{ other_user.pk }}';
+  const CONVERSATION_ID  = '{{ conversation.pk|default:"" }}';
+  const CURRENT_USER_ID  = '{{ request.user.pk|default:"" }}';
+  const OTHER_USER_ID    = '{{ other_user.pk|default:"" }}';
   const CSRF_TOKEN       = '{{ csrf_token }}';
   const UPLOAD_URL       = '{% url "chats:upload_attachment" %}';
   const HISTORY_URL      = '{% url "chats:message_history" pk=conversation.pk %}';
   const WS_SCHEME        = window.location.protocol === 'https:' ? 'wss' : 'ws';
   const WS_URL           = `${WS_SCHEME}://${window.location.host}/ws/chats/${CONVERSATION_ID}/`;
+  const MAX_CHARS        = 4000;
+  const WARN_AT          = 3600;  // show counter from here
 
   /* ── State ─────────────────────────────────────────────────────── */
   let socket          = null;
   let reconnectTimer  = null;
   let typingTimer     = null;
   let isTyping        = false;
-  let pendingIds      = [];       // attachment UUIDs queued for next send
+  let pendingIds      = [];
   let oldestMsgId     = '{{ oldest_message_id|default:"" }}';
   let hasOlder        = {% if has_older %}true{% else %}false{% endif %};
   let loadingMore     = false;
   let userScrolledUp  = false;
+  let newWhileScrolled = 0;   // unread-while-scrolled counter for FAB badge
 
   /* ── DOM refs ───────────────────────────────────────────────────── */
   const chatMessages    = document.getElementById('chatMessages');
@@ -620,6 +726,9 @@
   const typingIndicator = document.getElementById('typingIndicator');
   const previewStrip    = document.getElementById('previewStrip');
   const wsBanner        = document.getElementById('wsBanner');
+  const scrollFab       = document.getElementById('scrollFab');
+  const fabBadge        = document.getElementById('fabBadge');
+  const charCount       = document.getElementById('charCount');
 
   /* ── Utilities ─────────────────────────────────────────────────── */
   function esc(str) {
@@ -634,6 +743,23 @@
     });
   }
 
+  function fmtDateLabel(iso) {
+    const d   = new Date(iso);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const msgDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diff = (today - msgDay) / 86400000;
+
+    if (diff < 1) return 'Today';
+    if (diff < 2) return 'Yesterday';
+    return d.toLocaleDateString('en-NG', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
+  }
+
+  function dateKey(iso) {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  }
+
   /* ── Scroll ─────────────────────────────────────────────────────── */
   function scrollBottom(smooth = true) {
     chatMessages.scrollTo({ top: chatMessages.scrollHeight, behavior: smooth ? 'smooth' : 'instant' });
@@ -641,18 +767,36 @@
 
   chatMessages.addEventListener('scroll', () => {
     const gap = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
-    userScrolledUp = gap > 120;
+    userScrolledUp = gap > 100;
+    if (!userScrolledUp) {
+      newWhileScrolled = 0;
+      scrollFab.classList.remove('visible');
+      fabBadge.style.display = 'none';
+    }
   }, { passive: true });
+
+  function updateFab(increment = false) {
+    if (increment) newWhileScrolled++;
+    if (userScrolledUp) {
+      scrollFab.classList.add('visible');
+      if (newWhileScrolled > 0) {
+        fabBadge.textContent = newWhileScrolled > 9 ? '9+' : newWhileScrolled;
+        fabBadge.style.display = 'flex';
+      } else {
+        fabBadge.style.display = 'none';
+      }
+    }
+  }
 
   /* ── WebSocket ──────────────────────────────────────────────────── */
   function connect() {
     socket = new WebSocket(WS_URL);
 
     socket.onopen = () => {
-      wsBanner.style.display = 'none';
+      wsBanner.classList.remove('visible');
       clearTimeout(reconnectTimer);
 
-      // Send unread receipt for server-rendered messages
+      // Send read receipts for visible other-user messages
       const unreadEls = chatMessages.querySelectorAll('.msg-row-other[data-id]');
       const ids = [...unreadEls].map(el => el.dataset.id).filter(Boolean);
       if (ids.length) send({ type: 'read_receipt', message_ids: ids });
@@ -662,20 +806,20 @@
       try {
         const data = JSON.parse(e.data);
         ({
-          new_message:    () => onNew(data),
-          message_edited: () => onEdited(data),
-          message_deleted:() => onDeleted(data),
-          typing:         () => onTypingStart(),
-          stop_typing:    () => onTypingStop(),
-          read_receipt:   () => onReadReceipt(data),
-          user_status:    () => onUserStatus(data),
-          error:          () => toast(data.message, 'error'),
+          new_message:     () => onNew(data),
+          message_edited:  () => onEdited(data),
+          message_deleted: () => onDeleted(data),
+          typing:          () => onTypingStart(),
+          stop_typing:     () => onTypingStop(),
+          read_receipt:    () => onReadReceipt(data),
+          user_status:     () => onUserStatus(data),
+          error:           () => toast(data.message, 'error'),
         }[data.type] || (() => {}))();
       } catch { /* ignore bad frames */ }
     };
 
     socket.onclose = () => {
-      wsBanner.style.display = 'flex';
+      wsBanner.classList.add('visible');
       clearTimeout(reconnectTimer);
       reconnectTimer = setTimeout(connect, 3500);
     };
@@ -693,7 +837,23 @@
 
   /* ── WS Handlers ────────────────────────────────────────────────── */
   function onNew(data) {
+    // ── DEDUP GUARD: skip if this message ID is already in the DOM ──
+    if (chatMessages.querySelector(`[data-id="${data.message_id}"]`)) return;
+
     const isOwn = data.sender_id === CURRENT_USER_ID;
+
+    // Date divider injection
+    const createdAt = data.created_at;
+    const dKey = dateKey(createdAt);
+    const lastRow = chatMessages.querySelector('.msg-row[data-ts]:last-of-type') ||
+                    [...chatMessages.querySelectorAll('.msg-row[data-ts]')].at(-1);
+    const lastDKey = lastRow ? dateKey(lastRow.dataset.ts || '') : null;
+
+    if (dKey !== lastDKey) {
+      const divider = makeDateDivider(fmtDateLabel(createdAt));
+      chatMessages.insertBefore(divider, typingIndicator);
+    }
+
     const el = makeBubble({
       id:          data.message_id,
       isOwn,
@@ -701,15 +861,19 @@
       body:        data.body,
       type:        data.message_type,
       attachments: data.attachments || [],
-      createdAt:   data.created_at,
+      createdAt,
       isEdited:    false,
       isDeleted:   false,
+      ts:          createdAt,
     });
 
-    // Insert before typing indicator
-    chatMessages.insertBefore(el, typingIndicator.parentNode ? typingIndicator : null);
+    chatMessages.insertBefore(el, typingIndicator);
 
-    if (!userScrolledUp || isOwn) scrollBottom();
+    if (!userScrolledUp || isOwn) {
+      scrollBottom();
+    } else {
+      updateFab(true);
+    }
 
     if (!isOwn) {
       send({ type: 'read_receipt', message_ids: [data.message_id] });
@@ -753,8 +917,7 @@
     (data.message_ids || []).forEach(id => {
       const tick = chatMessages.querySelector(`[data-id="${id}"] .msg-tick i`);
       if (tick) {
-        tick.className = 'fas fa-check-double';
-        tick.style.color = 'var(--sky)';
+        tick.className = 'fas fa-check-double read';
       }
     });
   }
@@ -782,6 +945,8 @@
     if (ok) {
       msgInput.value = '';
       msgInput.style.height = '';
+      charCount.textContent = '';
+      charCount.className   = '';
       pendingIds = [];
       previewStrip.innerHTML = '';
       previewStrip.style.display = 'none';
@@ -791,12 +956,23 @@
     }
   }
 
-  /* ── Typing ──────────────────────────────────────────────────────── */
+  /* ── Typing + char counter ───────────────────────────────────────── */
   msgInput.addEventListener('input', () => {
-    // Auto-resize
+    // Auto-resize textarea
     msgInput.style.height = '';
     msgInput.style.height = Math.min(msgInput.scrollHeight, 120) + 'px';
 
+    // Character counter
+    const len = msgInput.value.length;
+    if (len >= WARN_AT) {
+      charCount.textContent = `${len}/${MAX_CHARS}`;
+      charCount.className   = len >= MAX_CHARS ? 'limit' : 'warn';
+    } else {
+      charCount.textContent = '';
+      charCount.className   = '';
+    }
+
+    // Typing indicators
     const body = msgInput.value.trim();
     if (body && !isTyping) {
       isTyping = true;
@@ -868,41 +1044,80 @@
     loadingMore = true;
 
     const btn = document.getElementById('loadMoreBtn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin" style="margin-right:6px;font-size:0.7rem;"></i>Loading…'; }
 
     try {
       const res  = await fetch(`${HISTORY_URL}?before=${encodeURIComponent(oldestMsgId)}`);
       const data = await res.json();
       const prevH = chatMessages.scrollHeight;
 
-      // Prepend in correct order (oldest first after reversing)
-      const anchor = chatMessages.children[btn ? 1 : 0] || null;
-      ;[...data.messages].reverse().forEach(msg => {
+      // Insert in oldest-first order, skipping duplicates
+      const anchor = btn ? btn.nextElementSibling : chatMessages.firstElementChild;
+      let lastInserted = null;
+      let lastDKey = null;
+
+      // Determine the date of the first already-rendered message (for divider logic)
+      const firstRendered = chatMessages.querySelector('.msg-row[data-ts]');
+      const firstRenderedDKey = firstRendered ? dateKey(firstRendered.dataset.ts || '') : null;
+
+      data.messages.forEach(msg => {
+        // Dedup guard
+        if (chatMessages.querySelector(`[data-id="${msg.id}"]`)) return;
+
+        const mDKey = dateKey(msg.created_at);
+
+        // Date divider if day changes between consecutive history messages
+        if (lastDKey !== null && mDKey !== lastDKey) {
+          const div = makeDateDivider(fmtDateLabel(msg.created_at));
+          chatMessages.insertBefore(div, anchor);
+        }
+
         const el = makeBubbleFromHistory(msg);
         chatMessages.insertBefore(el, anchor);
+        lastDKey = mDKey;
+        lastInserted = el;
       });
+
+      // Insert a divider between the loaded batch and existing messages if needed
+      if (data.messages.length && firstRenderedDKey) {
+        const lastBatchDKey = dateKey(data.messages[data.messages.length - 1].created_at);
+        if (lastBatchDKey !== firstRenderedDKey) {
+          // Find the first .msg-row after anchor
+          const divider = makeDateDivider(fmtDateLabel(
+            chatMessages.querySelector('.msg-row[data-ts]')?.dataset.ts || new Date().toISOString()
+          ));
+          chatMessages.insertBefore(divider, anchor);
+        }
+      }
 
       if (data.messages.length) oldestMsgId = data.messages[0].id;
       hasOlder = data.has_more;
 
-      // Maintain position
+      // Maintain scroll position
       chatMessages.scrollTop = chatMessages.scrollHeight - prevH;
 
       if (!hasOlder && btn) { btn.remove(); }
-      else if (btn) { btn.disabled = false; btn.textContent = '↑ Load older messages'; }
+      else if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-chevron-up" style="margin-right:6px;font-size:0.68rem;"></i>Load older messages'; }
 
     } catch {
       toast('Failed to load older messages.', 'error');
-      if (btn) { btn.disabled = false; btn.textContent = 'Load older messages'; }
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-chevron-up" style="margin-right:6px;font-size:0.68rem;"></i>Load older messages'; }
     }
 
     loadingMore = false;
   };
 
-  /* ── Bubble builder ──────────────────────────────────────────────── */
-  function makeBubble({ id, isOwn, senderName, body, type, attachments, createdAt, isEdited, isDeleted }) {
+  /* ── Date divider builder ─────────────────────────────────────────── */
+  function makeDateDivider(label) {
+    const div = document.createElement('div');
+    div.className = 'date-divider';
+    div.innerHTML = `<span>${esc(label)}</span>`;
+    return div;
+  }
 
-    // System message
+  /* ── Bubble builder ──────────────────────────────────────────────── */
+  function makeBubble({ id, isOwn, senderName, body, type, attachments, createdAt, isEdited, isDeleted, ts }) {
+
     if (type === 'system') {
       const row = document.createElement('div');
       row.className = 'msg-row-system';
@@ -914,18 +1129,23 @@
     const row = document.createElement('div');
     row.className = `msg-row ${isOwn ? 'msg-row-own' : 'msg-row-other'}`;
     row.dataset.id = id;
+    row.dataset.sender = isOwn ? CURRENT_USER_ID : OTHER_USER_ID;
+    row.dataset.ts = ts || createdAt;
 
-    /* Avatar (other side only) */
-    let avatarHtml = '';
-    if (!isOwn) {
-      avatarHtml = `<div class="msg-avatar" title="${esc(senderName)}">${esc((senderName||'?')[0].toUpperCase())}</div>`;
-    }
+    const fullDate = new Date(createdAt).toLocaleDateString('en-NG', {
+      weekday:'short', day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:false
+    });
+
+    /* Avatar */
+    const avatarHtml = !isOwn
+      ? `<div class="msg-avatar" title="${esc(senderName)}">${esc((senderName||'?')[0].toUpperCase())}</div>`
+      : '';
 
     /* Images */
     let imgHtml = '';
     if (attachments?.length) {
       const imgs = attachments.map(a =>
-        `<img src="${esc(a.url)}" alt="${esc(a.original_name||'Image')}" class="msg-img-grid__img"
+        `<img src="${esc(a.url)}" alt="${esc(a.original_name||'Image')}"
               onclick="openLightbox('${esc(a.url)}')" loading="lazy">`
       ).join('');
       imgHtml = `<div class="msg-img-grid">${imgs}</div>`;
@@ -940,9 +1160,11 @@
 
     /* Meta */
     const editedBadge = isEdited ? '<span class="msg-edited">edited</span>' : '';
-    const tickHtml    = isOwn   ? '<span class="msg-tick"><i class="fas fa-check"></i></span>' : '';
+    const tickHtml    = isOwn
+      ? `<span class="msg-tick"><i class="fas fa-check unread"></i></span>`
+      : '';
 
-    /* Actions (own + not deleted) */
+    /* Actions */
     const actionsHtml = isOwn && !isDeleted ? `
       <div class="msg-actions-menu">
         ${type === 'text' ? `<button class="msg-action" title="Edit" onclick="startEdit('${id}')"><i class="fas fa-pencil"></i></button>` : ''}
@@ -956,7 +1178,7 @@
           ${imgHtml}${bodyHtml}
           <div class="msg-meta">
             ${editedBadge}
-            <span class="msg-time">${fmtTime(createdAt)}</span>
+            <span class="msg-time" title="${esc(fullDate)}">${fmtTime(createdAt)}</span>
             ${tickHtml}
           </div>
         </div>
@@ -978,6 +1200,7 @@
       createdAt:   msg.created_at,
       isEdited:    msg.is_edited,
       isDeleted:   msg.is_deleted,
+      ts:          msg.created_at,
     });
   }
 
@@ -1008,7 +1231,6 @@
       const newBody = wrap.querySelector('.edit-input').value.trim();
       if (!newBody) return;
       send({ type: 'edit_message', message_id: id, body: newBody });
-      // Optimistic update
       bodyEl.textContent = newBody;
       wrap.replaceWith(bodyEl);
     };
@@ -1025,7 +1247,7 @@
 
   /* ── Lightbox ────────────────────────────────────────────────────── */
   window.openLightbox = function (src) {
-    const lb  = document.getElementById('lightbox');
+    const lb = document.getElementById('lightbox');
     lb.querySelector('img').src = src;
     lb.style.display = 'flex';
   };
@@ -1055,7 +1277,6 @@
 
   /* ── Init ────────────────────────────────────────────────────────── */
   connect();
-  // Scroll to bottom on load without animation
   requestAnimationFrame(() => scrollBottom(false));
 
 })();

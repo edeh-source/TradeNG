@@ -988,19 +988,44 @@ class ToggleSaveJobView(WorkerRequiredMixin, View):
 class EmployerDashboardView(EmployerRequiredMixin, View):
     """
     /dashboard/employer/
-    Surfaces: active jobs, recent applications, pending reviews.
+    Surfaces: active jobs (paginated + filterable), recent applications,
+    pending milestones, and aggregate stats.
     """
     template_name = 'marketplace/dashboard/employer.html'
+    JOBS_PER_PAGE = 8
 
     def get(self, request):
         employer = self.employer_profile
 
-        jobs = (
+        # ── All jobs (used for stats + filtered queryset) ────────────────
+        all_jobs = (
             Job.objects.filter(employer=employer)
             .annotate(app_count=Count('applications'))
             .order_by('-created')
         )
 
+        # ── Status filter tab ────────────────────────────────────────────
+        status_filter = request.GET.get('status', 'all')
+        valid_statuses = {'active', 'paused', 'draft', 'filled', 'expired', 'closed'}
+        if status_filter in valid_statuses:
+            filtered_jobs = all_jobs.filter(status=status_filter)
+        else:
+            status_filter = 'all'
+            filtered_jobs = all_jobs
+
+        # ── Pagination ───────────────────────────────────────────────────
+        paginator  = Paginator(filtered_jobs, self.JOBS_PER_PAGE)
+        jobs_page  = paginator.get_page(request.GET.get('page'))
+
+        # ── Aggregate stats (always across all jobs) ─────────────────────
+        from django.db.models import Sum as _Sum
+        total_jobs   = all_jobs.count()
+        active_count = all_jobs.filter(status=Job.Status.ACTIVE).count()
+        total_apps   = (
+            JobApplication.objects.filter(job__employer=employer).count()
+        )
+
+        # ── Recent pending applications ──────────────────────────────────
         recent_apps = (
             JobApplication.objects.filter(
                 job__employer=employer,
@@ -1009,6 +1034,10 @@ class EmployerDashboardView(EmployerRequiredMixin, View):
             .select_related('job', 'worker__user')
             .order_by('-applied_at')[:8]
         )
+        pending_apps_total = JobApplication.objects.filter(
+            job__employer=employer,
+            status=JobApplication.Status.PENDING,
+        ).count()
 
         # ── Milestones awaiting funding ──────────────────────────────────
         pending_milestones = (
@@ -1031,11 +1060,20 @@ class EmployerDashboardView(EmployerRequiredMixin, View):
 
         return render(request, self.template_name, {
             'employer':    employer,
-            'jobs':        jobs,
-            'recent_apps': recent_apps,
-            'pending_milestones':       pending_milestones,
-            'pending_milestones_total': pending_milestones_total,
-            'unread_count':             _unread_notification_count(request.user),
+            # Paginated / filtered job listing
+            'jobs_page':       jobs_page,
+            'status_filter':   status_filter,
+            # Sidebar recent data
+            'recent_apps':     recent_apps,
+            'pending_apps_total':        pending_apps_total,
+            'pending_milestones':        pending_milestones,
+            'pending_milestones_total':  pending_milestones_total,
+            # Aggregate stats (top row)
+            'stat_total_jobs':  total_jobs,
+            'stat_active_jobs': active_count,
+            'stat_pending_apps': pending_apps_total,
+            'stat_total_apps':  total_apps,
+            'unread_count':     _unread_notification_count(request.user),
             # Cross-role navigation
             'has_worker_profile': has_worker_profile,
         })

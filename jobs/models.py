@@ -292,6 +292,32 @@ class WorkerProfile(models.Model):
         choices=Availability.choices,
         default=Availability.AVAILABLE,
     )
+
+    # ── Employment Preferences (LinkedIn / Hiring Mode) ──────────────────────
+    class EmploymentPreference(models.TextChoices):
+        FULL_TIME = 'full_time', 'Full-Time Employment'
+        PART_TIME = 'part_time', 'Part-Time Employment'
+        EITHER    = 'either',    'Either Full or Part-Time'
+        GIG_ONLY  = 'gig_only',  'Gig / Contract Work Only'
+
+    open_to_employment = models.BooleanField(
+        default=False,
+        help_text='Shows an "Open to Work" badge and makes profile visible in talent search.',
+    )
+    employment_preference = models.CharField(
+        max_length=20,
+        choices=EmploymentPreference.choices,
+        default=EmploymentPreference.GIG_ONLY,
+    )
+    expected_monthly_salary = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        null=True, blank=True,
+        help_text='Expected monthly salary in NGN for full-time employment.',
+    )
+    notice_period = models.CharField(
+        max_length=100, blank=True,
+        help_text='e.g. "Available immediately", "2 weeks notice", "1 month".',
+    )
     is_verified      = models.BooleanField(
         default=False,
         help_text='Set by admin after document/ID verification.',
@@ -322,6 +348,20 @@ class WorkerProfile(models.Model):
         help_text="Legacy CLIP text embedding. Use text_embedding instead.",
     )
     clip_embedding_updated = models.DateTimeField(null=True, blank=True)
+
+    # ── Dispute tracking ─────────────────────────────────────────────────
+    disputes_raised  = models.PositiveIntegerField(
+        default=0,
+        help_text='Total disputes this worker has ever raised.',
+    )
+    disputes_lost    = models.PositiveIntegerField(
+        default=0,
+        help_text='Disputes resolved against this worker (as raiser or respondent).',
+    )
+    dispute_flagged  = models.BooleanField(
+        default=False,
+        help_text='Automatically set when dispute loss rate exceeds 40% with ≥3 disputes.',
+    )
 
     # ── Metadata ────────────────────────────────────────────────────────────
     created          = models.DateTimeField(auto_now_add=True)
@@ -508,10 +548,46 @@ class EmployerProfile(models.Model):
     state        = models.CharField(max_length=40, choices=NIGERIAN_STATES, blank=True)
     lga          = models.CharField(max_length=120, blank=True)
 
+    # ── Company Detail (LinkedIn / Hiring Mode) ───────────────────────────────
+    company_size = models.CharField(
+        max_length=30, blank=True,
+        choices=[
+            ('1_10',    '1–10 employees'),
+            ('11_50',   '11–50 employees'),
+            ('51_200',  '51–200 employees'),
+            ('201_500', '201–500 employees'),
+            ('500plus', '500+ employees'),
+        ],
+        help_text='Approximate number of full-time employees.',
+    )
+    year_founded = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text='Year the company was established.',
+    )
+    industry_sector = models.CharField(
+        max_length=100, blank=True,
+        help_text='e.g. Construction, Real Estate, Oil & Gas, Manufacturing.',
+    )
+
     is_verified  = models.BooleanField(
         default=False,
         help_text='Admin-confirmed verified employer. Shown with a badge.',
     )
+
+    # ── Dispute tracking ─────────────────────────────────────────────────
+    disputes_raised  = models.PositiveIntegerField(
+        default=0,
+        help_text='Total disputes this employer has ever raised.',
+    )
+    disputes_lost    = models.PositiveIntegerField(
+        default=0,
+        help_text='Disputes resolved against this employer.',
+    )
+    dispute_flagged  = models.BooleanField(
+        default=False,
+        help_text='Automatically set when dispute loss rate exceeds 40% with ≥3 disputes.',
+    )
+
     created      = models.DateTimeField(auto_now_add=True)
     updated      = models.DateTimeField(auto_now=True)
 
@@ -901,6 +977,11 @@ class Notification(models.Model):
         ESCROW_APPROVED    = 'escrow_approved',      'Milestone Approved'
         ESCROW_RELEASED    = 'escrow_released',      'Payment Released'
         ESCROW_DISPUTE     = 'escrow_dispute',       'Dispute Raised'
+        # ── Hiring / LinkedIn mode ─────────────────────────────────────────
+        HIRING_INTEREST_RECEIVED = 'hiring_interest_received', 'New Hire Interest Received'
+        HIRING_INTEREST_REPLIED  = 'hiring_interest_replied',  'Worker Replied to Outreach'
+        SKILL_ENDORSED           = 'skill_endorsed',            'Your Skill Was Endorsed'
+        PROFILE_SAVED            = 'profile_saved',             'An Employer Saved Your Profile'
 
     id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user       = models.ForeignKey(
@@ -1178,16 +1259,49 @@ class Dispute(models.Model):
     evidence         = models.FileField(
         upload_to='disputes/evidence/', null=True, blank=True,
     )
+    evidence_sha256  = models.CharField(
+        max_length=64, blank=True,
+        help_text='SHA-256 of the evidence file at upload time (tamper detection).',
+    )
     resolution       = models.CharField(
         max_length=30, choices=Resolution.choices, default=Resolution.PENDING,
     )
     resolution_note  = models.TextField(blank=True)
+    split_worker_pct = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text='For SPLIT resolution: percentage (0-100) released to the worker.',
+    )
     resolved_at      = models.DateTimeField(null=True, blank=True)
     resolved_by      = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='resolved_disputes',
     )
+
+    # ── Mediation (5-day self-resolution window) ─────────────────────────
+    mediation_deadline       = models.DateTimeField(
+        null=True, blank=True,
+        help_text='Set to created_at + 5 days. Admin cannot act until this passes.',
+    )
+    mediation_employer_agreed = models.CharField(
+        max_length=30, blank=True,
+        help_text='Resolution the employer agreed to during mediation window.',
+    )
+    mediation_worker_agreed   = models.CharField(
+        max_length=30, blank=True,
+        help_text='Resolution the worker agreed to during mediation window.',
+    )
+
+    # ── SLA / Escalation ─────────────────────────────────────────────────
+    escalated        = models.BooleanField(
+        default=False,
+        help_text='Set True when dispute has been open 72h+ without resolution.',
+    )
+    auto_release_at  = models.DateTimeField(
+        null=True, blank=True,
+        help_text='Set to created_at + 7 days. Funds auto-release to worker if admin has not acted.',
+    )
+
     created_at       = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1195,3 +1309,44 @@ class Dispute(models.Model):
 
     def __str__(self):
         return f'Dispute: {self.milestone.title} — {self.resolution}'
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  17.  DISPUTE MESSAGE
+#       Immutable evidence thread — both parties + admin post here after
+#       a dispute is opened.  Provides an auditable conversation log.
+# ──────────────────────────────────────────────────────────────────────────────
+
+class DisputeMessage(models.Model):
+    """
+    A single message/evidence post within a Dispute thread.
+    Once created it is never edited or deleted — forms the immutable audit log.
+    """
+
+    id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    dispute    = models.ForeignKey(
+        Dispute, on_delete=models.CASCADE, related_name='messages',
+    )
+    author     = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name='dispute_messages',
+    )
+    body       = models.TextField(help_text='Message body — visible to both parties and admin.')
+    attachment = models.FileField(
+        upload_to='disputes/messages/', null=True, blank=True,
+    )
+    attachment_sha256 = models.CharField(
+        max_length=64, blank=True,
+        help_text='SHA-256 of attachment at upload time.',
+    )
+    is_admin_note = models.BooleanField(
+        default=False,
+        help_text='If True, only admin/staff can see this message.',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f'DisputeMessage by {self.author.username} on {self.created_at:%Y-%m-%d %H:%M}'

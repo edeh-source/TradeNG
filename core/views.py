@@ -68,3 +68,32 @@ def homepage(request):
 
 def login_user(request):
     return render(request, 'jobs/login.html')
+
+
+def about_us(request):
+    """
+    Comprehensive About Us view detailing TradeLink NG's mission, ecosystem,
+    trust & verification system, and milestones for artisans and employers across Nigeria.
+    """
+    from jobs.models import (
+        TradeCategory,
+        WorkerProfile,
+        Job,
+        EmployerProfile,
+        NIGERIAN_STATES,
+    )
+
+    total_workers   = WorkerProfile.objects.count()
+    total_jobs      = Job.objects.filter(status=Job.Status.ACTIVE).count()
+    total_employers = EmployerProfile.objects.count()
+    categories      = TradeCategory.objects.filter(is_active=True).order_by('display_order', 'name')
+    total_trades    = categories.count()
+
+    return render(request, 'about.html', {
+        'total_workers':         total_workers,
+        'total_jobs':            total_jobs,
+        'total_employers':       total_employers,
+        'categories':            categories,
+        'total_trades':          total_trades or 36,
+        'nigerian_states_count': len(NIGERIAN_STATES) if NIGERIAN_STATES else 37,
+    })

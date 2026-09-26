@@ -34,6 +34,7 @@ from .models import (
     Milestone,
     WorkerBankAccount,
     Dispute,
+    DisputeMessage,
     Notification,
 )
 from .views import (
@@ -48,6 +49,9 @@ from .service.escrow_service import (
     approve_milestone,
     raise_dispute,
     resolve_dispute,
+    split_milestone,
+    post_dispute_message,
+    mediation_agree,
     finalize_transfer_with_otp,
     sync_pending_transfers,
 )
@@ -451,7 +455,7 @@ class MilestoneDisputeView(LoginRequiredMixin, View):
 
         evidence = request.FILES.get('evidence')
 
-        success = raise_dispute(
+        success, error_code = raise_dispute(
             milestone_id=str(milestone.pk),
             raised_by_user_id=request.user.pk,
             reason=reason,
@@ -459,18 +463,114 @@ class MilestoneDisputeView(LoginRequiredMixin, View):
         )
 
         if success:
+            msg = 'Dispute raised. You have 5 days for mediation before admin review.'
             if _is_ajax(request):
-                return JsonResponse({'status': 'disputed', 'milestone_id': str(milestone.pk)})
-            messages.success(request, 'Dispute raised. An admin will review and resolve it.')
+                return JsonResponse({'status': 'disputed', 'milestone_id': str(milestone.pk), 'message': msg})
+            messages.success(request, msg)
             return redirect('marketplace:contract_detail', pk=milestone.contract.pk)
 
+        error_map = {
+            'too_soon': 'A dispute cannot be raised within 24 hours of funding. Please allow the worker time to begin.',
+            'dispute_window_expired': 'The 14-day dispute window for this milestone has expired.',
+            'dispute_already_exists': 'A dispute has already been raised for this milestone.',
+            'invalid_milestone_status': 'Disputes can only be raised on funded or in-review milestones.',
+        }
+        err_msg = error_map.get(error_code, error_code or 'Could not raise a dispute on this milestone.')
+
         if _is_ajax(request):
-            return JsonResponse({'error': 'Could not raise dispute.'}, status=400)
-        messages.error(request, 'Could not raise a dispute on this milestone.')
+            return JsonResponse({'error': err_msg}, status=400)
+        messages.error(request, err_msg)
         return redirect('marketplace:contract_detail', pk=milestone.contract.pk)
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+#  DISPUTE MESSAGES (EVIDENCE THREAD)
+# ──────────────────────────────────────────────────────────────────────────────
 
+class PostDisputeMessageView(LoginRequiredMixin, View):
+    """
+    POST /escrow/disputes/<uuid:pk>/messages/
+    Post a message or attachment to an ongoing dispute's evidence thread.
+    """
+
+    def post(self, request, pk):
+        dispute = get_object_or_404(
+            Dispute.objects.select_related('milestone__contract'),
+            pk=pk,
+        )
+
+        body = request.POST.get('body', '').strip()
+        attachment = request.FILES.get('attachment')
+        is_admin_note = request.POST.get('is_admin_note') in ('true', '1', 'on')
+
+        if not body and not attachment:
+            if _is_ajax(request):
+                return JsonResponse({'error': 'Message body or attachment is required.'}, status=400)
+            messages.error(request, 'Please provide a message or attach a file.')
+            return redirect('marketplace:contract_detail', pk=dispute.milestone.contract.pk)
+
+        success, err = post_dispute_message(
+            dispute_id=str(dispute.pk),
+            author_user_id=request.user.pk,
+            body=body,
+            attachment=attachment,
+            is_admin_note=is_admin_note,
+        )
+
+        if success:
+            if _is_ajax(request):
+                return JsonResponse({'status': 'message_posted'})
+            messages.success(request, 'Evidence / message posted.')
+        else:
+            if _is_ajax(request):
+                return JsonResponse({'error': err}, status=400)
+            messages.error(request, f'Failed to post message: {err}')
+
+        return redirect('marketplace:contract_detail', pk=dispute.milestone.contract.pk)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  MEDIATION AGREE (5-DAY WINDOW)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class MediationAgreeView(LoginRequiredMixin, View):
+    """
+    POST /escrow/disputes/<uuid:pk>/mediate/
+    Parties agree on a mutual resolution during the 5-day mediation window.
+    """
+
+    def post(self, request, pk):
+        dispute = get_object_or_404(
+            Dispute.objects.select_related('milestone__contract'),
+            pk=pk,
+        )
+
+        agreed_resolution = request.POST.get('agreed_resolution', '').strip()
+        success, outcome = mediation_agree(
+            dispute_id=str(dispute.pk),
+            agreeing_user_id=request.user.pk,
+            agreed_resolution=agreed_resolution,
+        )
+
+        if success:
+            if outcome == 'auto_resolved':
+                msg = 'Both parties agreed! The dispute has been automatically resolved.'
+            else:
+                msg = 'Your agreement has been recorded. Waiting for the other party to confirm.'
+            if _is_ajax(request):
+                return JsonResponse({'status': outcome, 'message': msg})
+            messages.success(request, msg)
+        else:
+            err_msg = 'Mediation agreement could not be processed.'
+            if outcome == 'mediation_window_closed':
+                err_msg = 'The 5-day mediation window has closed. An admin will resolve this dispute.'
+            elif outcome == 'not_participant':
+                err_msg = 'You are not a participant in this contract.'
+            if _is_ajax(request):
+                return JsonResponse({'error': err_msg}, status=400)
+            messages.error(request, err_msg)
+
+        return redirect('marketplace:contract_detail', pk=dispute.milestone.contract.pk)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -481,6 +581,7 @@ class DisputeAdminResolveView(LoginRequiredMixin, View):
     """
     POST /escrow/disputes/<pk>/resolve/
     Staff-only view to resolve a dispute.
+    Supports RELEASED_TO_WORKER, REFUNDED_TO_EMPLOYER, and SPLIT.
     """
 
     def post(self, request, pk):
@@ -500,6 +601,7 @@ class DisputeAdminResolveView(LoginRequiredMixin, View):
         valid_resolutions = [
             Dispute.Resolution.RELEASED_TO_WORKER,
             Dispute.Resolution.REFUNDED_TO_EMPLOYER,
+            Dispute.Resolution.SPLIT,
         ]
         if resolution not in valid_resolutions:
             if _is_ajax(request):
@@ -507,12 +609,25 @@ class DisputeAdminResolveView(LoginRequiredMixin, View):
             messages.error(request, 'Invalid resolution choice.')
             return redirect('admin:jobs_dispute_change', dispute.pk)
 
-        success = resolve_dispute(
-            dispute_id=str(dispute.pk),
-            resolution=resolution,
-            resolved_by_user_id=request.user.pk,
-            resolution_note=resolution_note,
-        )
+        if resolution == Dispute.Resolution.SPLIT:
+            try:
+                worker_pct = int(request.POST.get('split_worker_pct', 50))
+            except (ValueError, TypeError):
+                worker_pct = 50
+
+            success = split_milestone(
+                dispute_id=str(dispute.pk),
+                worker_pct=worker_pct,
+                resolved_by_user_id=request.user.pk,
+                resolution_note=resolution_note,
+            )
+        else:
+            success = resolve_dispute(
+                dispute_id=str(dispute.pk),
+                resolution=resolution,
+                resolved_by_user_id=request.user.pk,
+                resolution_note=resolution_note,
+            )
 
         if success:
             if _is_ajax(request):

@@ -31,6 +31,8 @@ urlpatterns = [
     path('verify/', include('verification.urls', namespace='verify')),
     path('accounts/', include('allauth.urls')),
     path('', include('bot.urls')),
+    path('hire/', include('hiring.urls', namespace='hiring')),
+    path('contacts/', include('contacts.urls', namespace='contacts')),
 ]
 
 if settings.DEBUG:

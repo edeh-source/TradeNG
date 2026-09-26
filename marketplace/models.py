@@ -483,6 +483,24 @@ class OrderDispute(models.Model):
         null=True, blank=True,
         related_name='marketplace_disputes_resolved',
     )
+    evidence_sha256 = models.CharField(
+        max_length=64, blank=True,
+        help_text='SHA-256 of evidence file at upload time (tamper detection).',
+    )
+    split_seller_pct = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text='For SPLIT resolution: percentage (0-100) released to the seller.',
+    )
+    # ── Mediation (5-day self-resolution window) ─────────────────────────
+    mediation_deadline       = models.DateTimeField(null=True, blank=True)
+    mediation_buyer_agreed   = models.CharField(max_length=30, blank=True)
+    mediation_seller_agreed  = models.CharField(max_length=30, blank=True)
+    # ── SLA / Escalation ─────────────────────────────────────────────────
+    escalated        = models.BooleanField(default=False)
+    auto_release_at  = models.DateTimeField(
+        null=True, blank=True,
+        help_text='Auto-release to seller 7 days after dispute creation if unresolved.',
+    )
     created_at      = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -490,6 +508,40 @@ class OrderDispute(models.Model):
 
     def __str__(self):
         return f'Dispute: {self.order} — {self.resolution}'
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  6b. ORDER DISPUTE MESSAGE
+#      Immutable evidence thread attached to an OrderDispute.
+# ──────────────────────────────────────────────────────────────────────────────
+
+class OrderDisputeMessage(models.Model):
+    """
+    A single message/evidence post within an OrderDispute thread.
+    Immutable — never edited or deleted.
+    """
+
+    id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    dispute    = models.ForeignKey(
+        OrderDispute, on_delete=models.CASCADE, related_name='messages',
+    )
+    author     = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name='order_dispute_messages',
+    )
+    body          = models.TextField()
+    attachment    = models.FileField(
+        upload_to='marketplace/disputes/messages/', null=True, blank=True,
+    )
+    attachment_sha256 = models.CharField(max_length=64, blank=True)
+    is_admin_note = models.BooleanField(default=False)
+    created_at    = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f'OrderDisputeMessage by {self.author.username} on {self.created_at:%Y-%m-%d %H:%M}'
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -1099,8 +1099,8 @@
           </div>
         </div><!-- /parties card -->
 
-        <!-- ── Buyer Actions ── -->
-        {% if is_buyer %}
+        <!-- ── Actions ── -->
+        {% if is_buyer or is_seller or request.user.is_staff %}
         <div class="od-card fade-up d4">
           <div class="od-card-head">
             <div class="od-card-head-left">
@@ -1111,7 +1111,7 @@
           <div class="od-card-body">
             <div class="od-actions">
 
-              <!-- Confirm receipt -->
+              <!-- Confirm receipt (Buyer) -->
               {% if can_confirm %}
               <div class="confirm-warning">
                 <i class="fas fa-exclamation-triangle"></i>
@@ -1126,7 +1126,25 @@
               </form>
               {% endif %}
 
-              <!-- Raise dispute -->
+              <!-- Retry Payout (Buyer or Seller or Staff) -->
+              {% if can_retry_payout %}
+              <div class="confirm-warning" style="background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.25); color: var(--text-1);">
+                <i class="fas fa-info-circle" style="color: var(--sky);"></i>
+                {% if is_buyer %}
+                  Receipt is confirmed. If payout hasn't reached the seller yet, you can retry processing it now.
+                {% else %}
+                  Buyer has confirmed receipt! Click below to process/retry your payout transfer to your bank.
+                {% endif %}
+              </div>
+              <form method="post" action="{% url 'mktplace:order_confirm' pk=order.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="od-action-btn primary">
+                  <i class="fas fa-sync-alt"></i> Process / Retry Seller Payout
+                </button>
+              </form>
+              {% endif %}
+
+              <!-- Raise dispute (Buyer) -->
               {% if can_dispute and not dispute %}
               <div id="dispute-toggle-area">
                 <button type="button" class="od-action-btn danger" onclick="toggleDisputeForm()">
@@ -1155,7 +1173,7 @@
               {% endif %}
 
               <!-- No actions available -->
-              {% if not can_confirm and not can_dispute and not can_review %}
+              {% if not can_confirm and not can_retry_payout and not can_dispute and not can_review %}
               <p style="font-size:0.85rem;color:var(--text-3);text-align:center;padding:8px 0;">
                 {% if order.status == 'completed' %}
                   This order is complete.
@@ -1173,7 +1191,7 @@
 
             </div>
           </div>
-        </div><!-- /buyer actions card -->
+        </div><!-- /actions card -->
         {% endif %}
 
         <!-- ── Payment References ── -->

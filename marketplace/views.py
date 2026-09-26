@@ -52,10 +52,13 @@ Design notes
     race conditions.
 """
 
+import hashlib
 import logging
+from datetime import timedelta
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db.models import Avg, Count, F, Q
 from django.http import JsonResponse, HttpResponseForbidden
@@ -71,12 +74,14 @@ from .models import (
     Offer,
     Order,
     OrderDispute,
+    OrderDisputeMessage,
     ProductReview,
     SavedProduct,
     UserProductInteraction,
     ProductRecommendation,
 )
 from jobs.models import WorkerProfile, Notification
+from jobs.service.escrow_service import _hash_file, _validate_evidence_mime
 
 logger = logging.getLogger(__name__)
 
@@ -418,17 +423,28 @@ class CategoryListView(View):
     """GET /marketplace/categories/"""
 
     template_name = 'marketplace/category_list.html'
+    PAGE_SIZE = 12
 
     def get(self, request):
-        categories = (
+        q = request.GET.get('q', '').strip()
+        qs = (
             MarketplaceCategory.objects.filter(is_active=True)
             .annotate(product_count=Count(
                 'products', filter=Q(products__status=Product.Status.ACTIVE)
             ))
             .order_by('display_order', 'name')
         )
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(description__icontains=q))
+
+        paginator = Paginator(qs, self.PAGE_SIZE)
+        page_obj = paginator.get_page(request.GET.get('page'))
+
         return render(request, self.template_name, {
-            'categories':   categories,
+            'categories':   page_obj.object_list,
+            'page_obj':     page_obj,
+            'q':            q,
+            'total_count':  paginator.count,
             'unread_count': _unread_count(request.user),
         })
 
@@ -1254,23 +1270,31 @@ class OrderDetailView(LoginRequiredMixin, View):
         review  = getattr(order, 'review', None)
 
         return render(request, self.template_name, {
-            'order':        order,
-            'is_buyer':     is_buyer,
-            'is_seller':    is_seller,
-            'dispute':      dispute,
-            'review':       review,
-            'can_confirm':  is_buyer and order.status == Order.Status.PAID,
-            'can_dispute':  is_buyer and order.status in [
-                                Order.Status.PAID,
-                                Order.Status.MEETUP_SCHEDULED,
-                                Order.Status.CONFIRMED,
-                            ],
-            'can_review':   (
+            'order':            order,
+            'is_buyer':         is_buyer,
+            'is_seller':        is_seller,
+            'dispute':          dispute,
+            'review':           review,
+            'can_confirm':      is_buyer and order.status in [
+                                    Order.Status.PAID,
+                                    Order.Status.MEETUP_SCHEDULED,
+                                ],
+            'can_retry_payout': (
+                (is_buyer or is_seller or request.user.is_staff)
+                and order.status == Order.Status.CONFIRMED
+                and not order.completed_at
+            ),
+            'can_dispute':      is_buyer and order.status in [
+                                    Order.Status.PAID,
+                                    Order.Status.MEETUP_SCHEDULED,
+                                    Order.Status.CONFIRMED,
+                                ],
+            'can_review':       (
                 is_buyer
                 and order.status == Order.Status.COMPLETED
                 and review is None
             ),
-            'unread_count': _unread_count(request.user),
+            'unread_count':     _unread_count(request.user),
         })
 
 
@@ -1340,28 +1364,46 @@ class ConfirmReceiptView(LoginRequiredMixin, View):
     """
     POST /marketplace/orders/<uuid:pk>/confirm/
 
-    Buyer confirms they received the item.
-    Triggers payout to seller via Celery.
+    Buyer confirms they received the item, or buyer/seller retries payout if
+    the background transfer previously failed.
+    Triggers payout to seller via Celery task.
     """
 
     def post(self, request, pk):
         order = get_object_or_404(
             Order,
             pk=pk,
-            buyer=request.user,
-            status=Order.Status.PAID,
+            status__in=[
+                Order.Status.PAID,
+                Order.Status.MEETUP_SCHEDULED,
+                Order.Status.CONFIRMED,
+            ],
         )
+
+        seller_profile = _seller_profile_or_none(request.user)
+        is_buyer = order.buyer == request.user
+        is_seller = seller_profile == order.seller
+
+        if not (is_buyer or is_seller or request.user.is_staff):
+            return HttpResponseForbidden()
+
         from marketplace.service.market_place_service_escrow import confirm_order_receipt
         success = confirm_order_receipt(str(order.pk))
 
         if success:
-            messages.success(
-                request,
-                'Receipt confirmed — the seller will receive their payment shortly. '
-                'Please leave a review.',
-            )
+            if order.status == Order.Status.CONFIRMED:
+                messages.success(
+                    request,
+                    'Payout transfer process initiated for this order.',
+                )
+            else:
+                messages.success(
+                    request,
+                    'Receipt confirmed — the seller will receive their payment shortly. '
+                    'Please leave a review.',
+                )
         else:
-            messages.error(request, 'Could not confirm receipt. Please try again.')
+            messages.error(request, 'Could not process receipt/payout. Please try again.')
 
         return redirect('mktplace:order_detail', pk=pk)
 
@@ -1435,8 +1477,12 @@ class RaiseDisputeView(LoginRequiredMixin, View):
     POST /marketplace/orders/<uuid:pk>/dispute/
 
     Buyer raises a dispute on a PAID or CONFIRMED order.
-    Sets order status to DISPUTED and creates OrderDispute.
-    Admin resolves via DisputeAdminResolveView.
+    Enforces:
+      - 24h minimum age after payment (prevents premature dispute)
+      - 14-day maximum dispute window
+      - Single active dispute per order
+      - MIME whitelist + SHA-256 evidence hashing
+      - 5-day mediation window + 7-day auto-release SLA
     """
 
     def post(self, request, pk):
@@ -1456,25 +1502,193 @@ class RaiseDisputeView(LoginRequiredMixin, View):
             messages.warning(request, 'A dispute already exists for this order.')
             return redirect('mktplace:order_detail', pk=pk)
 
+        # 24h minimum age
+        now = timezone.now()
+        if order.paid_at:
+            age_hours = (now - order.paid_at).total_seconds() / 3600
+            if age_hours < 24:
+                messages.error(
+                    request,
+                    'A dispute cannot be raised within 24 hours of payment. Please allow time for meetup/handover.',
+                )
+                return redirect('mktplace:order_detail', pk=pk)
+
+            # 14-day window
+            age_days = (now - order.paid_at).days
+            if age_days > 14:
+                messages.error(
+                    request,
+                    'The 14-day dispute window for this order has expired.',
+                )
+                return redirect('mktplace:order_detail', pk=pk)
+
         reason = request.POST.get('reason', '').strip()
         if not reason:
             messages.error(request, 'Please describe the problem.')
             return redirect('mktplace:order_detail', pk=pk)
 
+        evidence = request.FILES.get('evidence')
+        evidence_sha256 = ""
+        if evidence:
+            try:
+                _validate_evidence_mime(evidence)
+            except ValidationError as exc:
+                messages.error(request, str(exc))
+                return redirect('mktplace:order_detail', pk=pk)
+            evidence_sha256 = _hash_file(evidence)
+
         OrderDispute.objects.create(
-            order     = order,
-            raised_by = request.user,
-            reason    = reason,
-            evidence  = request.FILES.get('evidence'),
+            order           = order,
+            raised_by       = request.user,
+            reason          = reason,
+            evidence        = evidence,
+            evidence_sha256 = evidence_sha256,
+            mediation_deadline = now + timedelta(days=5),
+            auto_release_at = now + timedelta(days=7),
         )
         order.status = Order.Status.DISPUTED
         order.save(update_fields=['status', 'updated_at'])
 
+        # Notify seller
+        Notification.objects.create(
+            user=order.seller.user,
+            notif_type=Notification.NotifType.SYSTEM,
+            title='Dispute raised on order',
+            body=(
+                f'Buyer has raised a dispute on "{order.product.title}". '
+                f'You have 5 days to resolve this via the dispute thread.'
+            ),
+            data={'order_id': str(order.pk)},
+        )
+
         messages.warning(
             request,
-            'Your dispute has been raised. Our team will review it within 24 hours.',
+            'Your dispute has been raised. You and the seller have 5 days for mediation before admin review.',
         )
         return redirect('mktplace:order_detail', pk=pk)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  MARKETPLACE DISPUTE MESSAGES (EVIDENCE THREAD)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class PostOrderDisputeMessageView(LoginRequiredMixin, View):
+    """
+    POST /marketplace/disputes/<uuid:pk>/messages/
+    Buyer, seller, or staff posts an immutable message or evidence to the thread.
+    """
+
+    def post(self, request, pk):
+        dispute = get_object_or_404(
+            OrderDispute.objects.select_related('order__seller__user', 'order__buyer'),
+            pk=pk,
+        )
+
+        is_buyer = dispute.order.buyer_id == request.user.pk
+        is_seller = dispute.order.seller.user_id == request.user.pk
+        if not (is_buyer or is_seller or request.user.is_staff):
+            return HttpResponseForbidden()
+
+        body = request.POST.get('body', '').strip()
+        attachment = request.FILES.get('attachment')
+        is_admin_note = request.POST.get('is_admin_note') in ('true', '1', 'on') and request.user.is_staff
+
+        if not body and not attachment:
+            messages.error(request, 'Please provide a message or attach evidence.')
+            return redirect('mktplace:order_detail', pk=dispute.order.pk)
+
+        sha256 = ""
+        if attachment:
+            try:
+                _validate_evidence_mime(attachment)
+            except ValidationError as exc:
+                messages.error(request, str(exc))
+                return redirect('mktplace:order_detail', pk=dispute.order.pk)
+            sha256 = _hash_file(attachment)
+
+        OrderDisputeMessage.objects.create(
+            dispute=dispute,
+            author=request.user,
+            body=body,
+            attachment=attachment,
+            attachment_sha256=sha256,
+            is_admin_note=is_admin_note,
+        )
+
+        # Notify the counterparty
+        recipient = dispute.order.seller.user if is_buyer else dispute.order.buyer
+        Notification.objects.create(
+            user=recipient,
+            notif_type=Notification.NotifType.SYSTEM,
+            title='New message on dispute',
+            body=f'{request.user.get_full_name() or request.user.username} posted on order #{str(dispute.order.pk)[:8]}.',
+            data={'order_id': str(dispute.order.pk)},
+        )
+
+        messages.success(request, 'Message / evidence posted to dispute thread.')
+        return redirect('mktplace:order_detail', pk=dispute.order.pk)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  MARKETPLACE MEDIATION AGREE (5-DAY WINDOW)
+# ──────────────────────────────────────────────────────────────────────────────
+
+class OrderMediationAgreeView(LoginRequiredMixin, View):
+    """
+    POST /marketplace/disputes/<uuid:pk>/mediate/
+    Buyer or seller agrees to a mutual resolution during the 5-day mediation window.
+    """
+
+    def post(self, request, pk):
+        dispute = get_object_or_404(
+            OrderDispute.objects.select_related('order__seller__user', 'order__buyer'),
+            pk=pk,
+            resolution=OrderDispute.Resolution.PENDING,
+        )
+
+        is_buyer = dispute.order.buyer_id == request.user.pk
+        is_seller = dispute.order.seller.user_id == request.user.pk
+        if not (is_buyer or is_seller):
+            return HttpResponseForbidden()
+
+        agreed = request.POST.get('agreed_resolution', '').strip()
+        valid = {OrderDispute.Resolution.RELEASED_TO_SELLER, OrderDispute.Resolution.REFUNDED_TO_BUYER}
+        if agreed not in valid:
+            messages.error(request, 'Invalid resolution choice.')
+            return redirect('mktplace:order_detail', pk=dispute.order.pk)
+
+        now = timezone.now()
+        if dispute.mediation_deadline and now > dispute.mediation_deadline:
+            messages.error(request, 'The 5-day mediation window has closed. An admin will review this dispute.')
+            return redirect('mktplace:order_detail', pk=dispute.order.pk)
+
+        if is_buyer:
+            dispute.mediation_buyer_agreed = agreed
+            dispute.save(update_fields=['mediation_buyer_agreed'])
+        else:
+            dispute.mediation_seller_agreed = agreed
+            dispute.save(update_fields=['mediation_seller_agreed'])
+
+        # Check if both agree
+        if dispute.mediation_buyer_agreed and dispute.mediation_seller_agreed and dispute.mediation_buyer_agreed == dispute.mediation_seller_agreed:
+            from marketplace.service.market_place_service_escrow import release_order_to_seller, refund_order_to_buyer
+            if agreed == OrderDispute.Resolution.RELEASED_TO_SELLER:
+                release_order_to_seller(str(dispute.order.pk))
+            else:
+                refund_order_to_buyer(str(dispute.order.pk))
+
+            dispute.resolution = agreed
+            dispute.resolution_note = "Resolved by mutual agreement during mediation window."
+            dispute.resolved_at = now
+            dispute.resolved_by = request.user
+            dispute.save(update_fields=['resolution', 'resolution_note', 'resolved_at', 'resolved_by'])
+
+            messages.success(request, 'Both parties agreed! The dispute has been automatically resolved.')
+        else:
+            messages.success(request, 'Your agreement has been recorded. Waiting for the other party to confirm.')
+
+        return redirect('mktplace:order_detail', pk=dispute.order.pk)
+
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1605,41 +1819,52 @@ class DisputeAdminResolveView(LoginRequiredMixin, View):
         note = request.POST.get('resolution_note', '').strip()
         now  = timezone.now()
 
-        dispute.resolution      = resolution
-        dispute.resolution_note = note
-        dispute.resolved_at     = now
-        dispute.resolved_by     = request.user
+        split_seller_pct = None
+        if resolution == OrderDispute.Resolution.SPLIT:
+            try:
+                split_seller_pct = int(request.POST.get('split_seller_pct', 50))
+            except (ValueError, TypeError):
+                split_seller_pct = 50
+
+        dispute.resolution       = resolution
+        dispute.resolution_note  = note
+        dispute.split_seller_pct = split_seller_pct
+        dispute.resolved_at      = now
+        dispute.resolved_by      = request.user
         dispute.save(update_fields=[
-            'resolution', 'resolution_note', 'resolved_at', 'resolved_by',
+            'resolution', 'resolution_note', 'split_seller_pct', 'resolved_at', 'resolved_by',
         ])
 
         order = dispute.order
+        from marketplace.service.market_place_service_escrow import (
+            release_order_to_seller,
+            refund_order_to_buyer,
+            split_order,
+        )
 
         if resolution == OrderDispute.Resolution.RELEASED_TO_SELLER:
-            from marketplace.service.market_place_service_escrow import release_order_to_seller
             success = release_order_to_seller(str(order.pk))
             if success:
-                messages.success(request, 'Funds released to seller.')
+                messages.success(request, 'Funds released to seller via Paystack Transfer.')
             else:
                 messages.error(request, 'Transfer failed — check logs.')
 
         elif resolution == OrderDispute.Resolution.REFUNDED_TO_BUYER:
-            # Phase 2: Paystack Refund API
-            order.status = Order.Status.REFUNDED
-            order.save(update_fields=['status', 'updated_at'])
-            messages.success(
-                request,
-                'Order marked as Refunded. Initiate Paystack refund manually for now.',
-            )
+            success = refund_order_to_buyer(str(order.pk))
+            if success:
+                messages.success(request, 'Order refunded to buyer via Paystack Refund API.')
+            else:
+                messages.error(request, 'Refund failed — check logs.')
 
         elif resolution == OrderDispute.Resolution.SPLIT:
-            # Phase 2: partial payout split
-            order.status = Order.Status.COMPLETED
-            order.save(update_fields=['status', 'updated_at'])
-            messages.success(
-                request,
-                'Dispute marked split — initiate partial transfers manually.',
-            )
+            success = split_order(str(order.pk), split_seller_pct)
+            if success:
+                messages.success(
+                    request,
+                    f'Dispute resolved with split: seller received {split_seller_pct}%, buyer refunded {100 - split_seller_pct}%.',
+                )
+            else:
+                messages.error(request, 'Split payout failed — check logs.')
 
         # Notify both parties
         Notification.objects.create(

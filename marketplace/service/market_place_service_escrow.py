@@ -184,23 +184,27 @@ def confirm_order_receipt(order_id: str) -> bool:
     from datetime import timedelta
 
     try:
-        order = Order.objects.get(pk=order_id, status=Order.Status.PAID)
+        order = Order.objects.get(
+            pk=order_id,
+            status__in=[Order.Status.PAID, Order.Status.MEETUP_SCHEDULED, Order.Status.CONFIRMED],
+        )
     except Order.DoesNotExist:
         logger.warning(
-            "confirm_order_receipt: order %s not found or not PAID.", order_id
+            "confirm_order_receipt: order %s not found or not in confirmable status.", order_id
         )
         return False
 
     now = timezone.now()
-    order.status           = Order.Status.CONFIRMED
-    order.confirmed_at     = now
-    order.auto_complete_at = now + timedelta(minutes=3)
-    order.save(update_fields=['status', 'confirmed_at', 'auto_complete_at'])
+    if order.status != Order.Status.CONFIRMED:
+        order.status           = Order.Status.CONFIRMED
+        order.confirmed_at     = now
+        order.auto_complete_at = now + timedelta(days=7)
+        order.save(update_fields=['status', 'confirmed_at', 'auto_complete_at'])
 
     # Queue payout — seller gets money once buyer confirms
     process_order_payout_task.delay(order_id)
 
-    logger.info("confirm_order_receipt: order %s confirmed by buyer.", order_id)
+    logger.info("confirm_order_receipt: order %s confirmed (payout task queued).", order_id)
     return True
 
 
@@ -244,18 +248,57 @@ def release_order_to_seller(order_id: str) -> bool:
         )
         return False
 
-    if not bank.paystack_recipient_code:
-        # Try to create recipient first
-        from jobs.service.escrow_service import create_transfer_recipient
+    from django.conf import settings as _settings
+    from jobs.service.escrow_service import create_transfer_recipient
+
+    def _recipient_valid(code: str) -> bool:
+        """Quick Paystack fetch to confirm the recipient code belongs to the current account."""
         try:
-            create_transfer_recipient(str(bank.pk))
-            bank.refresh_from_db()
+            r = requests.get(
+                f'{PAYSTACK_BASE}/transferrecipient/{code}',
+                headers=_headers(),
+                timeout=10,
+            )
+            return r.ok and r.json().get('status') is True
         except Exception:
-            logger.exception(
-                "release_order_to_seller: could not create recipient for seller %s",
+            return False  # treat network errors as valid to avoid blocking payouts
+
+    # Recreate recipient if missing, test-mode while on live keys, or not found in current account
+    _live_mode = _settings.PAYSTACK_SECRET_KEY.startswith('sk_live_')
+    _code_is_test_on_live = (
+        bank.paystack_recipient_code
+        and _live_mode
+        and bank.paystack_recipient_code.startswith('RCP_test')
+    )
+    _need_recipient = (
+        not bank.paystack_recipient_code
+        or _code_is_test_on_live
+        or not _recipient_valid(bank.paystack_recipient_code)
+    )
+
+    if _need_recipient:
+        logger.warning(
+            "release_order_to_seller: creating/recreating Paystack recipient for seller %s "
+            "(existing code: %r).",
+            order.seller_id, bank.paystack_recipient_code or 'none',
+        )
+        new_code = create_transfer_recipient(str(bank.pk))
+        if not new_code:
+            logger.error(
+                "release_order_to_seller: could not create Paystack recipient "
+                "for seller %s — aborting transfer.",
                 order.seller_id,
             )
             return False
+        bank.refresh_from_db()
+
+    # Final guard
+    if not bank.paystack_recipient_code:
+        logger.error(
+            "release_order_to_seller: recipient code still empty for seller %s — aborting.",
+            order.seller_id,
+        )
+        return False
 
     if not order.seller_payout_amount:
         order.compute_financials()
@@ -310,4 +353,129 @@ def release_order_to_seller(order_id: str) -> bool:
         order.seller_payout_amount, order.seller_id, order_id,
     )
     return True
-
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  REFUND TO BUYER
+# ──────────────────────────────────────────────────────────────────────────────
+
+def refund_order_to_buyer(order_id: str) -> bool:
+    """
+    Refunds the full order amount to the buyer via Paystack Refund API.
+    Marks order as REFUNDED.
+    """
+    from marketplace.models import Order, Product
+
+    try:
+        order = Order.objects.select_related('product').get(pk=order_id)
+    except Order.DoesNotExist:
+        logger.error("refund_order_to_buyer: order %s not found.", order_id)
+        return False
+
+    if order.paystack_payment_ref:
+        payload = {"transaction": order.paystack_payment_ref}
+        try:
+            resp = requests.post(
+                f"{PAYSTACK_BASE}/refund",
+                json=payload,
+                headers=_headers(),
+                timeout=30,
+            )
+            data = resp.json()
+            if not data.get("status"):
+                logger.error(
+                    "refund_order_to_buyer: Paystack refund failed: %s",
+                    data.get("message"),
+                )
+                return False
+        except requests.RequestException:
+            logger.exception("refund_order_to_buyer: request failed for order %s", order_id)
+            return False
+
+    now = timezone.now()
+    order.status = Order.Status.REFUNDED
+    order.updated_at = now
+    order.save(update_fields=['status', 'updated_at'])
+
+    # Relist product
+    Product.objects.filter(pk=order.product_id).update(status=Product.Status.ACTIVE)
+    return True
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  SPLIT ORDER (Automated Paystack Partial Payout)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def split_order(order_id: str, seller_pct: int) -> bool:
+    """
+    Transfers seller_pct% of the net amount to the seller, and refunds
+    (100 - seller_pct)% of the gross amount to the buyer via Paystack.
+    """
+    from marketplace.models import Order, Product
+    from jobs.models import WorkerBankAccount
+
+    if not (0 <= seller_pct <= 100):
+        logger.error("split_order: invalid seller_pct %d", seller_pct)
+        return False
+
+    try:
+        order = Order.objects.select_related('seller', 'product').get(pk=order_id)
+    except Order.DoesNotExist:
+        logger.error("split_order: order %s not found.", order_id)
+        return False
+
+    if not order.seller_payout_amount:
+        order.compute_financials()
+
+    gross = order.agreed_price
+    net = order.seller_payout_amount
+
+    seller_share = (net * Decimal(seller_pct) / Decimal("100")).quantize(Decimal("0.01"))
+    buyer_refund = (gross * Decimal(100 - seller_pct) / Decimal("100")).quantize(Decimal("0.01"))
+
+    # 1. Payout to seller if > 0
+    if seller_share > 0:
+        try:
+            bank = WorkerBankAccount.objects.get(worker=order.seller)
+            if bank.paystack_recipient_code:
+                payload = {
+                    'source':    'balance',
+                    'amount':    int(seller_share * 100),
+                    'recipient': bank.paystack_recipient_code,
+                    'reason':    f'Split Payout ({seller_pct}%): {order.product.title[:40]}',
+                }
+                resp = requests.post(f'{PAYSTACK_BASE}/transfer', json=payload, headers=_headers(), timeout=30)
+                data = resp.json()
+                if not data.get('status'):
+                    logger.error("split_order: Paystack transfer failed: %s", data.get('message'))
+                    return False
+        except Exception:
+            logger.exception("split_order: failed transferring to seller %s", order.seller_id)
+            return False
+
+    # 2. Refund to buyer if > 0
+    if buyer_refund > 0 and order.paystack_payment_ref:
+        try:
+            payload = {
+                "transaction":   order.paystack_payment_ref,
+                "amount":        int(buyer_refund * 100),
+                "merchant_note": f"Split refund ({100 - seller_pct}%): {order.product.title[:40]}",
+            }
+            resp = requests.post(f"{PAYSTACK_BASE}/refund", json=payload, headers=_headers(), timeout=30)
+            data = resp.json()
+            if not data.get("status"):
+                logger.error("split_order: Paystack refund failed: %s", data.get("message"))
+                return False
+        except Exception:
+            logger.exception("split_order: failed refunding buyer for order %s", order_id)
+            return False
+
+    now = timezone.now()
+    order.status = Order.Status.COMPLETED
+    order.completed_at = now
+    order.save(update_fields=['status', 'completed_at', 'updated_at'])
+
+    Product.objects.filter(pk=order.product_id).update(status=Product.Status.SOLD)
+    return True
+
+

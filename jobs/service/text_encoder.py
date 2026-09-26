@@ -229,3 +229,8 @@ class TextEncoder:
 
 # Module-level singleton — import this anywhere
 text_encoder = TextEncoder()
+
+
+def encode_text(text: str) -> List[float]:
+    """Convenience functional wrapper around text_encoder.encode."""
+    return text_encoder.encode(text)

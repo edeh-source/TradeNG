@@ -17,6 +17,7 @@ from .models import (
     Offer,
     Order,
     OrderDispute,
+    OrderDisputeMessage,
     Product,
     ProductImage,
     ProductReview,
@@ -254,28 +255,48 @@ class OrderAdmin(admin.ModelAdmin):
 #  5.  ORDER DISPUTE
 # ──────────────────────────────────────────────────────────────────────────────
 
+class OrderDisputeMessageInline(admin.TabularInline):
+    model = OrderDisputeMessage
+    extra = 0
+    readonly_fields = ('author', 'body', 'attachment', 'attachment_sha256', 'is_admin_note', 'created_at')
+    can_delete = False
+
+
 @admin.register(OrderDispute)
 class OrderDisputeAdmin(admin.ModelAdmin):
     list_display  = (
-        'order', 'raised_by', 'resolution', 'resolved_by', 'resolved_at', 'created_at',
+        'order', 'raised_by', 'resolution', 'split_seller_pct', 'escalated',
+        'mediation_deadline', 'resolved_by', 'resolved_at', 'created_at',
     )
-    list_filter   = ('resolution',)
+    list_filter   = ('resolution', 'escalated')
     search_fields = (
         'order__paystack_payment_ref',
         'raised_by__username',
         'reason',
+        'evidence_sha256',
     )
     raw_id_fields = ('order', 'raised_by', 'resolved_by')
-    readonly_fields = ('id', 'created_at', 'resolved_at')
+    readonly_fields = (
+        'id', 'created_at', 'resolved_at', 'evidence_sha256',
+        'mediation_deadline', 'mediation_buyer_agreed', 'mediation_seller_agreed',
+        'auto_release_at', 'escalated',
+    )
+    inlines = [OrderDisputeMessageInline]
     ordering = ('-created_at',)
     date_hierarchy = 'created_at'
 
     fieldsets = (
         ('Dispute', {
-            'fields': ('id', 'order', 'raised_by', 'reason', 'evidence'),
+            'fields': ('id', 'order', 'raised_by', 'reason', 'evidence', 'evidence_sha256'),
+        }),
+        ('Mediation & SLA', {
+            'fields': (
+                'mediation_deadline', 'mediation_buyer_agreed', 'mediation_seller_agreed',
+                'auto_release_at', 'escalated',
+            ),
         }),
         ('Resolution', {
-            'fields': ('resolution', 'resolution_note', 'resolved_by', 'resolved_at'),
+            'fields': ('resolution', 'split_seller_pct', 'resolution_note', 'resolved_by', 'resolved_at'),
         }),
         ('Timestamps', {
             'classes': ('collapse',),

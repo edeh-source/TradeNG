@@ -32,7 +32,21 @@ if DEBUG:
 else:
     ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',') if os.environ.get('ALLOWED_HOSTS') else ["*"]
 
-ALLOWED_HOSTS = ["*"]
+
+
+# Trusted origins for CSRF (required for HTTPS / ngrok / custom domains)
+# Set env var as comma-separated list, e.g.:
+#   CSRF_TRUSTED_ORIGINS=https://yourdomain.com,https://abc123.ngrok-free.app
+_extra_origins = [
+    o.strip()
+    for o in os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',')
+    if o.strip()
+]
+CSRF_TRUSTED_ORIGINS = [
+    'http://127.0.0.1:8000',
+    'http://localhost:8000',
+    *_extra_origins,
+]
 
 
 # ==================================
@@ -65,6 +79,8 @@ INSTALLED_APPS = [
     'chats.apps.ChatsConfig',
     'verification.apps.VerificationConfig',
     'bot.apps.BotConfig',
+    'hiring.apps.HiringConfig',
+    'contacts.apps.ContactsConfig',
 ]
 
 
@@ -172,14 +188,30 @@ else:
     }
 
 
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            'hosts': [('127.0.0.1', 6379)],
-        },
+_redis_url = os.environ.get('REDIS_URL', '')
+
+if _redis_url:
+    # Production — Upstash Redis (TLS)
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                'hosts': [_redis_url],
+                'capacity': 1500,
+                'expiry': 10,
+            },
+        }
     }
-}
+else:
+    # Development — local Redis
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                'hosts': [('127.0.0.1', 6379)],
+            },
+        }
+    }
 
 
 AUTHENTICATION_BACKENDS = [
@@ -415,9 +447,8 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
 
 PAYSTACK_SECRET_KEY     = os.environ.get('PAYSTACK_SECRET_KEY', 'sk_test_166306c4fa6512b95030917dbcfaaa25866d2ff0')
 PAYSTACK_PUBLIC_KEY     = os.environ.get('PAYSTACK_PUBLIC_KEY', 'pk_test_d487748abaabb52e28f3c13481053902f78f0e1d')
-PAYSTACK_CALLBACK_URL   = os.environ.get('PAYSTACK_CALLBACK_URL', 'http://localhost:8000/escrow/paystack/callback/')
-PAYSTACK_WEBHOOK_SECRET = os.environ.get('PAYSTACK_SECRET_KEY', 'sk_test_166306c4fa6512b95030917dbcfaaa25866d2ff0')  # Same key used for webhook HMAC
-print(PAYSTACK_SECRET_KEY, PAYSTACK_PUBLIC_KEY, PAYSTACK_CALLBACK_URL, PAYSTACK_WEBHOOK_SECRET)
+PAYSTACK_CALLBACK_URL   = os.environ.get('PAYSTACK_CALLBACK_URL', 'http://127.0.0.1:8000/escrow/paystack/callback/')
+PAYSTACK_WEBHOOK_SECRET = os.environ.get('PAYSTACK_WEBHOOK_SECRET', PAYSTACK_SECRET_KEY)  # Falls back to secret key if not separately set
 # ==================================
 # DOJAH (KYC / VERIFICATION)
 # ==================================
