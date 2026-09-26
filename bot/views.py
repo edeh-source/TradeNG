@@ -38,6 +38,7 @@ from django.views.decorators.csrf import csrf_exempt
 from .handlers import MessageRouter
 from .models import WhatsAppSession
 from .providers import get_provider
+from core.ratelimit import rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +146,7 @@ class BotWebhookView(View):
 
     # ── POST — incoming messages ──────────────────────────────────────────────
 
+    @rate_limit(key='meta_webhook:{ip}', limit=60, window=60, message='Too many webhook requests.', json=True)
     def post(self, request, *args, **kwargs):
         """
         Receives incoming WhatsApp messages from Meta.  Always returns 200
@@ -195,6 +197,7 @@ class TwilioWebhookView(View):
         POST https://yourdomain.com/bot/twilio/webhook/
     """
 
+    @rate_limit(key='twilio_webhook:{ip}', limit=60, window=60, message='Too many webhook requests.', json=True)
     def post(self, request, *args, **kwargs):
         """
         Validate Twilio signature, extract message, dispatch to MessageRouter.

@@ -11,6 +11,7 @@ from django.views import View
 from django.contrib.auth.mixins import LoginRequiredMixin
 
 from .forms import RegisterForm, LoginForm
+from core.ratelimit import rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ class RegisterView(View):
         form = RegisterForm()
         return render(request, self.template_name, {'form': form})
 
+    @rate_limit(key='register:{ip}', limit=5, window=3600, message='Too many registration attempts. Please try again later.')
     def post(self, request):
         if request.user.is_authenticated:
             return redirect('/')
@@ -87,6 +89,7 @@ class SignInView(View):
         form = LoginForm()
         return render(request, self.template_name, {'form': form})
 
+    @rate_limit(key='signin:{ip}', limit=10, window=600, message='Too many login attempts. Please try again in 10 minutes.')
     def post(self, request):
         if request.user.is_authenticated:
             return redirect('marketplace:dashboard')
@@ -268,6 +271,7 @@ class BankResolveAPIView(LoginRequiredMixin, View):
 
     login_url = 'signin'
 
+    @rate_limit(key='bank_resolve:{user}', limit=30, window=60, message='Too many account lookup requests. Please slow down.', json=True)
     def get(self, request):
         account_number = request.GET.get('account_number', '').strip()
         bank_code      = request.GET.get('bank_code', '').strip()
@@ -369,6 +373,10 @@ class PasswordResetRequestView(auth_views.PasswordResetView):
     email_template_name   = 'accounts/password_reset_email.txt'
     html_email_template_name = 'accounts/password_reset_email.html'
     success_url           = reverse_lazy('password_reset_done')
+
+    @rate_limit(key='pw_reset:{ip}', limit=5, window=1800, message='Too many password reset requests. Please try again in 30 minutes.')
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
 
     def get_form(self, form_class=None):
         form = super().get_form(form_class)

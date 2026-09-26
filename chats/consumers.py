@@ -47,7 +47,10 @@ import logging
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
+from django.core.cache import cache
 from django.utils import timezone
+
+from core.ratelimit import is_rate_limited_async
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +77,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         if not self.user.is_authenticated:
             logger.warning('ChatConsumer: unauthenticated connection rejected.')
-            await self.close()
+            await self.close(code=4001)
             return
 
         self.conversation_id = self.scope['url_route']['kwargs']['conversation_id']
@@ -86,40 +89,54 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'ChatConsumer: user %s is not a participant in conversation %s.',
                 self.user.pk, self.conversation_id,
             )
-            await self.close()
+            await self.close(code=4003)
             return
 
         # Join the conversation's channel group
-        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        try:
+            await self.channel_layer.group_add(self.group_name, self.channel_name)
+        except Exception as exc:
+            logger.error('ChatConsumer: group_add failed: %s', exc)
+            await self.close(code=4002)
+            return
 
         # Persist online status
-        await self._set_online_status(True)
+        try:
+            await self._set_online_status(True)
+        except Exception as exc:
+            logger.warning('ChatConsumer: _set_online_status failed: %s', exc)
 
         # Notify the other participant that this user is online
-        await self.channel_layer.group_send(
-            self.group_name,
-            {
-                'type':    'user_status',
-                'user_id': str(self.user.pk),
-                'status':  'online',
-            },
-        )
+        try:
+            await self.channel_layer.group_send(
+                self.group_name,
+                {
+                    'type':    'user_status',
+                    'user_id': str(self.user.pk),
+                    'status':  'online',
+                },
+            )
+        except Exception as exc:
+            logger.warning('ChatConsumer: group_send online status failed: %s', exc)
 
         # Handshake complete — connection is now open
         await self.accept()
 
         # On connect, bulk-mark any unread messages as read and broadcast receipts
-        unread_ids = await self._get_unread_message_ids()
-        if unread_ids:
-            await self._mark_messages_read(unread_ids)
-            await self.channel_layer.group_send(
-                self.group_name,
-                {
-                    'type':        'read_receipt',
-                    'user_id':     str(self.user.pk),
-                    'message_ids': [str(mid) for mid in unread_ids],
-                },
-            )
+        try:
+            unread_ids = await self._get_unread_message_ids()
+            if unread_ids:
+                await self._mark_messages_read(unread_ids)
+                await self.channel_layer.group_send(
+                    self.group_name,
+                    {
+                        'type':        'read_receipt',
+                        'user_id':     str(self.user.pk),
+                        'message_ids': [str(mid) for mid in unread_ids],
+                    },
+                )
+        except Exception as exc:
+            logger.warning('ChatConsumer: unread messages processing failed: %s', exc)
 
         logger.info(
             'ChatConsumer: user %s connected to conversation %s.',
@@ -128,10 +145,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def disconnect(self, close_code):
         if hasattr(self, 'group_name'):
-            await self.channel_layer.group_discard(self.group_name, self.channel_name)
+            try:
+                await self.channel_layer.group_discard(self.group_name, self.channel_name)
+            except Exception as exc:
+                logger.warning('ChatConsumer: group_discard failed: %s', exc)
 
         if hasattr(self, 'user') and self.user.is_authenticated:
-            await self._set_online_status(False)
+            try:
+                await self._set_online_status(False)
+            except Exception as exc:
+                logger.warning('ChatConsumer: set_online_status offline failed: %s', exc)
+
             # Broadcast offline status — group_send still works after discard
             # because the sender is identified by channel_name, not group membership
             try:
@@ -191,6 +215,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         if not body and not attachment_ids:
             await self._send_error('A message must have body text or at least one attachment.')
+            return
+
+        # Rate limit: max 45 messages per minute per user in chat
+        if await is_rate_limited_async(self.user.pk, key='chat_msg:{user}', limit=45, window=60):
+            await self._send_error('You are sending messages too quickly. Please wait a moment.')
             return
 
         message_data = await self._create_message(body, attachment_ids)

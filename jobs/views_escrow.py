@@ -28,6 +28,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views import View
+from core.ratelimit import rate_limit
 
 from .models import (
     Contract,
@@ -263,6 +264,7 @@ class MilestoneFundView(EmployerRequiredMixin, View):
     Calls initialize_milestone_payment() and redirects to Paystack.
     """
 
+    @rate_limit(key='fund_milestone:{user}', limit=10, window=600, message='Too many payment initialization attempts. Please wait a few minutes.')
     def post(self, request, pk):
         milestone = get_object_or_404(
             Milestone.objects.select_related('contract__employer'),
@@ -300,6 +302,7 @@ class PaystackCallbackView(View):
     will re-attach the session cookie.
     """
 
+    @rate_limit(key='escrow_paystack_cb:{ip}', limit=30, window=60, message='Too many requests.')
     def get(self, request):
         reference = request.GET.get('reference', '')
         trxref    = request.GET.get('trxref', reference)

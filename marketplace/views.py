@@ -82,6 +82,7 @@ from .models import (
 )
 from jobs.models import WorkerProfile, Notification
 from jobs.service.escrow_service import _hash_file, _validate_evidence_mime
+from core.ratelimit import rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -918,6 +919,7 @@ class ProductDeleteView(SellerRequiredMixin, View):
 class ProductImageUploadView(SellerRequiredMixin, View):
     """POST /marketplace/products/<uuid:pk>/images/add/"""
 
+    @rate_limit(key='img_upload:{user}', limit=40, window=3600, message='Image upload limit reached. Please wait a while.')
     def post(self, request, pk):
         product = get_object_or_404(Product, pk=pk, seller=self.seller_profile)
 
@@ -973,6 +975,7 @@ class MakeOfferView(LoginRequiredMixin, View):
         offer was below the minimum).
     """
 
+    @rate_limit(key='make_offer:{user}', limit=20, window=3600, message='You have submitted too many offers recently. Please wait a bit.')
     def post(self, request, pk):
         product = get_object_or_404(Product, pk=pk)
 
@@ -1191,6 +1194,7 @@ class BuyNowView(LoginRequiredMixin, View):
     Creates an Order at full listed price and redirects to payment.
     """
 
+    @rate_limit(key='buy_now:{user}', limit=10, window=600, message='Too many order attempts. Please wait a few minutes.')
     def post(self, request, pk):
         product = get_object_or_404(Product, pk=pk, status=Product.Status.ACTIVE)
 
@@ -1424,6 +1428,7 @@ class PaystackCallbackView(View):
     the order from the reference and shows the right message.
     """
 
+    @rate_limit(key='mkt_paystack_cb:{ip}', limit=30, window=60, message='Too many requests.')
     def get(self, request):
         reference = request.GET.get('reference', '')
 

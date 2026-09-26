@@ -102,11 +102,13 @@ SITE_ID = 1
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    'core.middleware.TerminalErrorLoggingMiddleware',   # Logs production 500 errors to terminal with full context & traceback
+    'core.middleware.GlobalRateLimitMiddleware',       # global 300 req/min per-IP backstop
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
-    'allauth.account.middleware.AccountMiddleware', 
+    'allauth.account.middleware.AccountMiddleware',
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -190,8 +192,25 @@ else:
 
 _redis_url = os.environ.get('REDIS_URL', '')
 
-if _redis_url:
-    # Production — Upstash Redis (TLS)
+if _redis_url and _redis_url.startswith('rediss://'):
+    # Production — Upstash Redis over TLS (rediss://)
+    # Pass ssl=True + ssl_cert_reqs=None so asyncio redis skips cert verification
+    # (Upstash uses self-signed certs on the free tier)
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                'hosts': [{
+                    'address': _redis_url,
+                    'ssl_cert_reqs': None,
+                }],
+                'capacity': 1500,
+                'expiry': 10,
+            },
+        }
+    }
+elif _redis_url:
+    # Production — plain Redis (redis://)
     CHANNEL_LAYERS = {
         'default': {
             'BACKEND': 'channels_redis.core.RedisChannelLayer',
@@ -441,6 +460,20 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
     'visibility_timeout': 3600,
 }
 
+# ── Celery Production Scaling & Memory Management ──────────────────────────────
+CELERY_TASK_TIME_LIMIT            = 300   # Hard kill task after 5 min
+CELERY_TASK_SOFT_TIME_LIMIT       = 240   # Raise SoftTimeLimitExceeded after 4 min
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 50    # Recycle worker process every 50 tasks (prevents PyTorch memory leaks)
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1     # Take one task at a time so long AI jobs don't starve other tasks
+
+# ── Production Security Headers ────────────────────────────────────────────────
+if not DEBUG:
+    SECURE_HSTS_SECONDS            = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD            = True
+    SECURE_CONTENT_TYPE_NOSNIFF    = True
+    X_FRAME_OPTIONS                = 'DENY'
+
 # ==================================
 # PAYSTACK
 # ==================================
@@ -555,3 +588,10 @@ CELERY_BEAT_SCHEDULE = {
 RECOVERY_CODE = "KTZG9CAEBATDFUXHC6J16QEA"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# ==================================
+# LOGGING (TERMINAL & PRODUCTION ERRORS)
+# ==================================
+from technicians.logging_config import get_logging_config
+
+LOGGING = get_logging_config(BASE_DIR, debug=DEBUG)

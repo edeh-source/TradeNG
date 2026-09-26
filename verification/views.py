@@ -16,6 +16,7 @@ from django.http import JsonResponse
 from .forms import NINForm, BVNForm, CACForm
 from .models import VerificationProfile, VerificationAttempt
 from .service.dojah_client import dojah
+from core.ratelimit import rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,10 @@ class NINVerifyView(LoginRequiredMixin, FormView):
     template_name  = 'verification/nin_verify.html'
     form_class     = NINForm
     success_url    = reverse_lazy('verify:dashboard')
+
+    @rate_limit(key='nin:{user}', limit=3, window=86400, message='Daily NIN verification limit reached (3 attempts). Please try again tomorrow.')
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
 
     def dispatch(self, request, *args, **kwargs):
         if request.user.is_authenticated:
@@ -121,6 +126,10 @@ class BVNVerifyView(LoginRequiredMixin, FormView):
     template_name  = 'verification/bvn_verify.html'
     form_class     = BVNForm
     success_url    = reverse_lazy('verify:dashboard')
+
+    @rate_limit(key='bvn:{user}', limit=3, window=86400, message='Daily BVN verification limit reached (3 attempts). Please try again tomorrow.')
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
 
     def dispatch(self, request, *args, **kwargs):
         if request.user.is_authenticated:
@@ -191,6 +200,10 @@ class CACVerifyView(LoginRequiredMixin, FormView):
     form_class     = CACForm
     success_url    = reverse_lazy('verify:dashboard')
 
+    @rate_limit(key='cac:{user}', limit=5, window=86400, message='Daily CAC verification limit reached (5 attempts). Please try again tomorrow.')
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+
     def dispatch(self, request, *args, **kwargs):
         if request.user.is_authenticated:
             vp = _get_profile(request.user)
@@ -260,6 +273,7 @@ class CACVerifyView(LoginRequiredMixin, FormView):
 class VerificationStatusView(LoginRequiredMixin, TemplateView):
     """Returns the current verification level as JSON."""
 
+    @rate_limit(key='ver_status:{user}', limit=60, window=60, message='Too many status checks.', json=True)
     def get(self, request, *args, **kwargs):
         vp = _get_profile(request.user)
         return JsonResponse({
