@@ -42,7 +42,7 @@ class WorkerProfileForm(forms.ModelForm):
         widgets = {
             'bio': forms.Textarea(attrs={'rows': 5,
                 'placeholder': 'Describe your skills, experience, and the kind of work you do…'}),
-            'lga': forms.TextInput(attrs={'placeholder': 'e.g. Ikeja'}),
+            'lga': forms.Select(attrs={'class': 'we-select'}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -60,6 +60,28 @@ class WorkerProfileForm(forms.ModelForm):
             self.fields['skills'].queryset = Skill.objects.filter(category=self.instance.trade_category, is_active=True)
         else:
             self.fields['skills'].queryset = Skill.objects.none()
+
+        # Dynamic Nigerian LGA choices based on selected/saved state
+        from .locations import get_lgas_for_state
+        state_code = None
+        if 'state' in self.data:
+            state_code = self.data.get('state')
+        elif self.instance and self.instance.pk and self.instance.state:
+            state_code = self.instance.state
+
+        if state_code:
+            lgas = get_lgas_for_state(state_code)
+            lga_choices = [('', '— Select LGA —')] + [(lga_name, lga_name) for lga_name in lgas]
+            # Ensure saved value is preserved even if it's custom or from legacy text input
+            current_lga = self.instance.lga if (self.instance and self.instance.pk) else ''
+            if current_lga and current_lga not in lgas:
+                lga_choices.append((current_lga, current_lga))
+            self.fields['lga'].widget = forms.Select(choices=lga_choices, attrs={'class': 'we-select'})
+        else:
+            self.fields['lga'].widget = forms.Select(
+                choices=[('', '— Select State first —')],
+                attrs={'class': 'we-select'}
+            )
 
     def save(self, commit=True):
         profile = super().save(commit=commit)

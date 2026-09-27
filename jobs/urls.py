@@ -71,6 +71,7 @@ from .views import (
     MarkAllNotificationsReadView,
     DeleteNotificationView,
     GetCategorySkillsView,
+    GetStateLgasView,
 )
 
 from .views_escrow import (
@@ -99,6 +100,11 @@ urlpatterns = [
         'api/skills/',
         GetCategorySkillsView.as_view(),
         name='api_skills',
+    ),
+    path(
+        'api/lgas/',
+        GetStateLgasView.as_view(),
+        name='api_lgas',
     ),
 
     # ── Trade Categories ────────────────────────────────────────────────────

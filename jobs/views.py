@@ -1527,3 +1527,20 @@ class GetCategorySkillsView(View):
             return JsonResponse({'skills': data})
         except ValueError:
             return JsonResponse({'skills': []}, status=400)
+
+
+class GetStateLgasView(View):
+    """
+    GET /api/lgas/?state=<code>
+    Returns a JSON list of LGAs for the given Nigerian state code.
+    If no state is specified, returns all states and their LGAs.
+    """
+    def get(self, request):
+        state_code = request.GET.get('state', '').strip().lower()
+        from .locations import get_nigerian_states_lgas, get_lgas_for_state
+
+        if not state_code:
+            return JsonResponse({'states_lgas': get_nigerian_states_lgas()})
+
+        lgas = get_lgas_for_state(state_code)
+        return JsonResponse({'state': state_code, 'lgas': lgas})
