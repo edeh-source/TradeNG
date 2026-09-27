@@ -264,6 +264,7 @@ SOCIALACCOUNT_AUTO_SIGNUP = True     # skip the allauth sign-up form; use your o
 SOCIALACCOUNT_QUERY_EMAIL = True     # always request the email scope
 SOCIALACCOUNT_STORE_TOKENS = True    # persist OAuth tokens in the DB (useful for API calls)
  
+LOGIN_URL                  = 'signin'
 LOGIN_REDIRECT_URL         = 'marketplace:dashboard'
 ACCOUNT_LOGOUT_REDIRECT_URL = 'signin'
 
@@ -281,6 +282,21 @@ PHONENUMBER_DEFAULT_REGION = 'NG'
 SOCIALACCOUNT_LOGIN_ON_GET = True
 
 SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'APP': {
+            'client_id': os.environ.get('GOOGLE_CLIENT_ID', ''),
+            'secret':    os.environ.get('GOOGLE_CLIENT_SECRET', ''),
+            'key':       '',
+        },
+        'SCOPE': [
+            'profile',
+            'email',
+        ],
+        'AUTH_PARAMS': {
+            'access_type': 'online',
+        },
+    },
+
     'facebook': {
         'APP': {
             'client_id': os.environ.get('FACEBOOK_APP_ID', ''),

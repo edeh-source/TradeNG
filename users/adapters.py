@@ -53,6 +53,29 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
     def is_open_for_signup(self, request, socialaccount):
         return True
 
+    def get_app(self, request, provider, client_id=None):
+        """
+        Safely retrieve the SocialApp for the given provider.
+        - If not configured in DB or settings, returns a placeholder SocialApp
+          so templates with {% provider_login_url %} never crash with DoesNotExist.
+        - If both DB and settings exist, chooses the configured one to avoid MultipleObjectsReturned.
+        """
+        import os
+        from allauth.socialaccount.models import SocialApp
+
+        apps = self.list_apps(request, provider=provider, client_id=client_id)
+        if not apps:
+            return SocialApp(
+                provider=provider,
+                name=provider.title(),
+                client_id=os.environ.get(f'{provider.upper()}_CLIENT_ID', ''),
+                secret=os.environ.get(f'{provider.upper()}_CLIENT_SECRET', ''),
+            )
+        if len(apps) > 1:
+            configured = [a for a in apps if getattr(a, 'client_id', '')]
+            return configured[0] if configured else apps[0]
+        return apps[0]
+
     # ── 1. Email-based account linking ───────────────────────────────────────
 
     def pre_social_login(self, request, sociallogin):
