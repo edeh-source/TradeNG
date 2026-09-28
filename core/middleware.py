@@ -227,7 +227,7 @@ class TerminalErrorLoggingMiddleware:
     def _log_http_5xx(self, request, response):
         """Log 5xx responses that were generated without an unhandled exception."""
         try:
-            ip = self._get_client_ip(request)
+            ip        = self._get_client_ip(request)
             user_info = self._get_user_info(request)
             terminal_logger.error(
                 "🚨 [PRODUCTION HTTP %d] Method=%s Path=%s User=%s IP=%s",
@@ -252,7 +252,7 @@ class TerminalErrorLoggingMiddleware:
         user = getattr(request, 'user', None)
         if user and getattr(user, 'is_authenticated', False):
             username = getattr(user, 'email', '') or getattr(user, 'username', str(user))
-            user_id = getattr(user, 'pk', 'unknown')
+            user_id  = getattr(user, 'pk', 'unknown')
             return f"{username} (ID: {user_id})"
         elif user:
             return "AnonymousUser"
@@ -261,21 +261,25 @@ class TerminalErrorLoggingMiddleware:
     def _get_sanitized_params(self, request) -> str:
         """Collect and sanitize query parameters and POST fields."""
         params = {}
-        # GET query params
+
+        # GET query params.
         for k, v in request.GET.items():
             params[k] = '[REDACTED]' if self._is_sensitive(k) else v
 
-        # POST form data (only for standard form payloads, avoid raw files)
+        # POST form data (only for standard form payloads, avoid raw files).
         if request.method == 'POST' and request.content_type in (
             'application/x-www-form-urlencoded',
             'multipart/form-data',
         ):
             for k, v in request.POST.items():
-                params[k] = '[REDACTED]' if self._is_sensitive(k) else (v if len(str(v)) < 120 else f"{str(v)[:120]}...")
+                params[k] = (
+                    '[REDACTED]' if self._is_sensitive(k)
+                    else (v if len(str(v)) < 120 else f"{str(v)[:120]}...")
+                )
 
         return str(params) if params else "{}"
 
     def _is_sensitive(self, key_name: str) -> bool:
-        """Check if parameter name matches sensitive keywords."""
+        """Check if a parameter name matches any known sensitive keyword."""
         key_lower = key_name.lower().replace('-', '_')
         return any(sensitive in key_lower for sensitive in self.SENSITIVE_KEYS)
