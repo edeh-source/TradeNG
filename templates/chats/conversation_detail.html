@@ -710,6 +710,7 @@
   /* ── State ─────────────────────────────────────────────────────── */
   let socket          = null;
   let reconnectTimer  = null;
+  let pingInterval    = null;
   let typingTimer     = null;
   let isTyping        = false;
   let pendingIds      = [];
@@ -796,6 +797,14 @@
       wsBanner.classList.remove('visible');
       clearTimeout(reconnectTimer);
 
+      // Keep alive heartbeat (every 25s) to prevent Render's 55s idle timeout
+      clearInterval(pingInterval);
+      pingInterval = setInterval(() => {
+        if (socket?.readyState === WebSocket.OPEN) {
+          send({ type: 'ping' });
+        }
+      }, 25000);
+
       // Send read receipts for visible other-user messages
       const unreadEls = chatMessages.querySelectorAll('.msg-row-other[data-id]');
       const ids = [...unreadEls].map(el => el.dataset.id).filter(Boolean);
@@ -813,12 +822,14 @@
           stop_typing:     () => onTypingStop(),
           read_receipt:    () => onReadReceipt(data),
           user_status:     () => onUserStatus(data),
+          pong:            () => {},
           error:           () => toast(data.message, 'error'),
         }[data.type] || (() => {}))();
       } catch { /* ignore bad frames */ }
     };
 
     socket.onclose = () => {
+      clearInterval(pingInterval);
       wsBanner.classList.add('visible');
       clearTimeout(reconnectTimer);
       reconnectTimer = setTimeout(connect, 3500);

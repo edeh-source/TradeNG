@@ -30,7 +30,13 @@ DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 if DEBUG:
     ALLOWED_HOSTS = ["127.0.0.1", "localhost", "192.168.43.77"]
 else:
-    ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',') if os.environ.get('ALLOWED_HOSTS') else ["*"]
+    raw_hosts = os.environ.get('ALLOWED_HOSTS', '')
+    ALLOWED_HOSTS = [h.strip() for h in raw_hosts.split(',') if h.strip()] if raw_hosts else ["*"]
+    render_hostname = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+    if render_hostname and render_hostname not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(render_hostname)
+    if '.onrender.com' not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append('.onrender.com')
 
 
 
@@ -47,6 +53,11 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:8000',
     *_extra_origins,
 ]
+render_hostname = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+if render_hostname:
+    render_origin = f'https://{render_hostname}'
+    if render_origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(render_origin)
 
 
 # ==================================
@@ -221,6 +232,13 @@ elif _redis_url:
             },
         }
     }
+elif not DEBUG:
+    # Production without Redis — fallback to InMemoryChannelLayer so WebSockets don't crash
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        }
+    }
 else:
     # Development — local Redis
     CHANNEL_LAYERS = {
@@ -252,8 +270,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 
 ACCOUNT_AUTHENTICATION_METHOD = 'email'
-ACCOUNT_EMAIL_REQUIRED         = True
-ACCOUNT_USERNAME_REQUIRED      = True
+ACCOUNT_SIGNUP_FIELDS          = ['email*', 'username*', 'password1*', 'password2*']
 ACCOUNT_USERNAME_MIN_LENGTH    = 3
 ACCOUNT_EMAIL_VERIFICATION     = 'optional'    # change to 'mandatory' if you send verification emails
  

@@ -81,24 +81,48 @@ class GlobalRateLimitMiddleware:
     Coarse sliding-window (or fixed-window fallback) per-IP rate limiter
     applied globally before any view logic runs.
 
-    Fully async-compatible for use with Daphne / uvicorn / ASGI.
-
-    WebSocket upgrade requests are intentionally exempt:
-      - They represent a single long-lived connection, not repeated HTTP hits.
-      - The sync_to_async cache call during a WebSocket handshake is a common
-        source of asyncio.CancelledError collisions when Render closes idle
-        connections after ~55 s. Skipping it entirely avoids the problem.
+    Dual-compatible (sync and async) for use with Daphne / uvicorn / WSGI / ASGI.
     """
 
+    sync_capable  = True
     async_capable = True
-    sync_capable  = False
 
     def __init__(self, get_response):
         self.get_response = get_response
+        self._is_async = asyncio.iscoroutinefunction(get_response)
         self.limit  = getattr(settings, 'GLOBAL_RATE_LIMIT',       _DEFAULT_LIMIT)
         self.window = getattr(settings, 'GLOBAL_RATE_LIMIT_WINDOW', _DEFAULT_WINDOW)
 
-    async def __call__(self, request):
+    def __call__(self, request):
+        if self._is_async:
+            return self.__acall__(request)
+
+        path = request.path_info
+        if any(path.startswith(prefix) for prefix in _EXEMPT_PREFIXES):
+            return self.get_response(request)
+
+        if request.META.get('HTTP_UPGRADE', '').lower() == 'websocket':
+            return self.get_response(request)
+
+        x_forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
+        ip = (
+            x_forwarded.split(',')[0].strip()
+            if x_forwarded
+            else request.META.get('REMOTE_ADDR', 'unknown')
+        )
+        ip_hash   = hashlib.sha256(ip.encode()).hexdigest()[:24]
+        cache_key = f'rl:global:{ip_hash}'
+
+        if self._is_blocked(cache_key, ip):
+            return HttpResponse(
+                'Rate limit exceeded. Please slow down.',
+                status=429,
+                content_type='text/plain',
+            )
+
+        return self.get_response(request)
+
+    async def __acall__(self, request):
         path = request.path_info
 
         # ── 1. Always exempt: admin, static, media ────────────────────────────
@@ -106,12 +130,6 @@ class GlobalRateLimitMiddleware:
             return await self.get_response(request)
 
         # ── 2. Exempt WebSocket upgrade handshakes ────────────────────────────
-        # WebSocket connections are long-lived; counting the upgrade request
-        # against the rate limit is semantically wrong. More importantly,
-        # invoking sync_to_async during a WS handshake creates a race between
-        # the cache thread and asyncio task cancellation (triggered when Render
-        # closes idle connections), producing the double-CancelledError pattern
-        # visible in asgiref's asyncio.shield → await exec_coro traceback.
         if request.META.get('HTTP_UPGRADE', '').lower() == 'websocket':
             return await self.get_response(request)
 
@@ -126,19 +144,11 @@ class GlobalRateLimitMiddleware:
         cache_key = f'rl:global:{ip_hash}'
 
         # ── 4. Run the blocking cache call off the event loop ─────────────────
-        # Wrap in an explicit CancelledError guard so that a mid-flight client
-        # disconnect propagates cleanly rather than colliding inside asgiref's
-        # asyncio.shield wrapper and producing a noisy double-traceback.
         try:
             blocked = await sync_to_async(self._is_blocked)(cache_key, ip)
         except asyncio.CancelledError:
-            # Client disconnected while we were checking the rate limit.
-            # Re-raise so the ASGI server can clean up normally — this is not
-            # a server error and should never be logged as one.
             raise
         except Exception as exc:
-            # Any other cache failure: fail open so users are never blocked by
-            # infrastructure downtime.
             logger.warning(
                 'global_ratelimit: unexpected error in sync_to_async (failing open): %s', exc
             )
@@ -179,19 +189,13 @@ class TerminalErrorLoggingMiddleware:
     High-visibility production error logging middleware.
 
     Intercepts all unhandled exceptions (500 errors) and HTTP >= 500 status
-    codes, printing a clean, impossible-to-miss diagnostic box to the terminal
-    stderr/stdout with full request context (URL, Method, IP, User, Sanitized
-    Parameters) and complete Python traceback.
+    codes, printing a clean, diagnostic box to the terminal stderr/stdout.
 
-    Fully async-compatible for use with Daphne / uvicorn / ASGI.
-
-    CancelledError (and ExceptionGroups wrapping only CancelledErrors) are
-    intentionally silenced — they indicate client disconnection or Render's
-    55-second idle-connection timeout, not server-side failures.
+    Dual-compatible (sync and async) for use with Daphne / uvicorn / WSGI / ASGI.
     """
 
+    sync_capable  = True
     async_capable = True
-    sync_capable  = False
 
     # Keys whose values should be redacted to prevent sensitive leaks in logs.
     SENSITIVE_KEYS = {
@@ -202,18 +206,18 @@ class TerminalErrorLoggingMiddleware:
 
     def __init__(self, get_response):
         self.get_response = get_response
+        self._is_async = asyncio.iscoroutinefunction(get_response)
 
-    async def __call__(self, request):
+    def __call__(self, request):
+        if self._is_async:
+            return self.__acall__(request)
+
         request._terminal_error_logged = False
         try:
-            response = await self.get_response(request)
-        except asyncio.CancelledError:
-            # Client disconnected or Render killed the request — not a server
-            # error. Re-raise silently without logging.
-            raise
-        except Exception:
-            # process_exception handles logging; re-raise so Django continues
-            # its normal exception-handling chain (custom 500 view, etc.).
+            response = self.get_response(request)
+        except Exception as exc:
+            if not _is_cancelled_error(exc):
+                self._log_exception(request, exc)
             raise
 
         # Log 5xx responses returned directly without raising an exception.
@@ -222,27 +226,32 @@ class TerminalErrorLoggingMiddleware:
 
         return response
 
-    async def process_exception(self, request, exception):
-        """
-        Called by Django's ASGI handler for unhandled view exceptions.
+    async def __acall__(self, request):
+        request._terminal_error_logged = False
+        try:
+            response = await self.get_response(request)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            if not _is_cancelled_error(exc):
+                self._log_exception(request, exc)
+            raise
 
-        Must be async to avoid the async_to_sync wrapping warning produced
-        when Django wraps a sync process_exception on an async middleware.
+        # Log 5xx responses returned directly without raising an exception.
+        if response.status_code >= 500 and not getattr(request, '_terminal_error_logged', False):
+            self._log_http_5xx(request, response)
 
-        CancelledError is explicitly suppressed here:
-          - On Render, idle WebSocket connections are terminated after ~55 s,
-            which causes uvicorn to cancel the running asyncio task.
-          - asgiref's asyncio.shield then raises a *second* CancelledError
-            when it tries to await the thread result for the already-cancelled
-            task — producing the double-traceback visible in the error log.
-          - Neither occurrence is a server error; both should be silently
-            re-raised so the ASGI server can clean up.
-          - Python 3.11+ ExceptionGroups that contain *only* CancelledErrors
-            are treated identically (see _is_cancelled_error helper).
-        """
+        return response
+
+    def process_exception(self, request, exception):
         if _is_cancelled_error(exception):
             return None
+        self._log_exception(request, exception)
+        return None
 
+    def _log_exception(self, request, exception):
+        if getattr(request, '_terminal_error_logged', False):
+            return
         request._terminal_error_logged = True
         try:
             now_str = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
