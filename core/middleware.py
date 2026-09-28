@@ -30,6 +30,7 @@ SessionMiddleware so static assets are never counted:
     ]
 """
 
+import asyncio
 import hashlib
 import logging
 import traceback
@@ -81,7 +82,7 @@ class GlobalRateLimitMiddleware:
         ip_hash   = hashlib.sha256(ip.encode()).hexdigest()[:24]
         cache_key = f'rl:global:{ip_hash}'
 
-        # Run the blocking cache call in a thread pool so we don't block the event loop
+        # Run the blocking cache call in a thread pool so we don't block the event loop.
         blocked = await sync_to_async(self._is_blocked)(cache_key, ip)
         if blocked:
             return HttpResponse(
@@ -117,10 +118,10 @@ class TerminalErrorLoggingMiddleware:
     """
     High-visibility production error logging middleware.
 
-    Intercepts all unhandled exceptions (500 errors) and HTTP >= 500 status codes,
-    printing a clean, impossible-to-miss diagnostic box to the terminal stderr/stdout
-    with full request context (URL, Method, IP, User, Sanitized Parameters)
-    and complete Python traceback.
+    Intercepts all unhandled exceptions (500 errors) and HTTP >= 500 status
+    codes, printing a clean, impossible-to-miss diagnostic box to the terminal
+    stderr/stdout with full request context (URL, Method, IP, User, Sanitized
+    Parameters) and complete Python traceback.
 
     Fully async-compatible for use with Daphne / ASGI.
     """
@@ -128,7 +129,7 @@ class TerminalErrorLoggingMiddleware:
     async_capable = True
     sync_capable = False
 
-    # Keys whose values should be redacted to prevent sensitive leaks in logs
+    # Keys whose values should be redacted to prevent sensitive leaks in logs.
     SENSITIVE_KEYS = {
         'password', 'password1', 'password2', 'secret', 'token', 'access_token',
         'refresh_token', 'api_key', 'key', 'authorization', 'card', 'cvv', 'pin',
@@ -140,33 +141,49 @@ class TerminalErrorLoggingMiddleware:
 
     async def __call__(self, request):
         request._terminal_error_logged = False
-        response = await self.get_response(request)
+        try:
+            response = await self.get_response(request)
+        except asyncio.CancelledError:
+            # Client disconnected or Render killed the request — not a server
+            # error. Re-raise silently without logging.
+            raise
+        except Exception:
+            # process_exception handles logging; re-raise so Django continues
+            # its normal exception-handling chain (custom 500 view, etc.).
+            raise
 
-        # Log 5xx responses that were returned directly without raising an uncaught exception
+        # Log 5xx responses returned directly without raising an exception.
         if response.status_code >= 500 and not getattr(request, '_terminal_error_logged', False):
             self._log_http_5xx(request, response)
 
         return response
 
-    def process_exception(self, request, exception):
+    async def process_exception(self, request, exception):
         """
-        Called when a view raises an unhandled exception.
-        Outputs an eye-catching terminal diagnostic banner with full traceback.
+        Called by Django's ASGI handler for unhandled view exceptions.
+
+        Must be async to avoid the async_to_sync wrapping warning produced
+        when Django wraps a sync process_exception on an async middleware.
         """
+        # CancelledError is not a server error — client disconnected or Render
+        # timed out the request. Never log these as production errors.
+        if isinstance(exception, asyncio.CancelledError):
+            return None
+
         request._terminal_error_logged = True
         try:
             now_str = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
-            method = request.method
-            path = request.get_full_path()
+            method  = request.method
+            path    = request.get_full_path()
             try:
                 full_url = request.build_absolute_uri()
             except Exception:
                 full_url = path
 
-            ip = self._get_client_ip(request)
-            user_info = self._get_user_info(request)
+            ip               = self._get_client_ip(request)
+            user_info        = self._get_user_info(request)
             sanitized_params = self._get_sanitized_params(request)
-            tb = traceback.format_exc()
+            tb               = traceback.format_exc()
 
             banner = [
                 "",
@@ -192,16 +209,20 @@ class TerminalErrorLoggingMiddleware:
             banner.append("")
 
             terminal_logger.error("\n".join(banner))
+
         except Exception as logging_error:
-            # Emergency fallback: ensure the traceback is printed even if formatting fails
+            # Emergency fallback: ensure something is printed even if
+            # the banner formatting itself fails.
             terminal_logger.error(
                 "TerminalErrorLoggingMiddleware failed to format error: %s",
                 logging_error,
                 exc_info=True,
             )
 
-        # Return None so Django continues standard exception handling (custom 500 view)
+        # Return None so Django continues with its standard 500 response / view.
         return None
+
+    # ── Private helpers ───────────────────────────────────────────────────────
 
     def _log_http_5xx(self, request, response):
         """Log 5xx responses that were generated without an unhandled exception."""
