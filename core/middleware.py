@@ -36,7 +36,7 @@ import logging
 import traceback
 from datetime import datetime, timezone
 
-from asgiref.sync import sync_to_async
+from asgiref.sync import markcoroutinefunction, sync_to_async
 from django.conf import settings
 from django.http import HttpResponse
 
@@ -81,48 +81,18 @@ class GlobalRateLimitMiddleware:
     Coarse sliding-window (or fixed-window fallback) per-IP rate limiter
     applied globally before any view logic runs.
 
-    Dual-compatible (sync and async) for use with Daphne / uvicorn / WSGI / ASGI.
+    Fully async-compatible for use with Daphne / uvicorn / ASGI.
     """
 
-    sync_capable  = True
     async_capable = True
+    sync_capable  = False
 
     def __init__(self, get_response):
         self.get_response = get_response
-        self._is_async = asyncio.iscoroutinefunction(get_response)
         self.limit  = getattr(settings, 'GLOBAL_RATE_LIMIT',       _DEFAULT_LIMIT)
         self.window = getattr(settings, 'GLOBAL_RATE_LIMIT_WINDOW', _DEFAULT_WINDOW)
 
-    def __call__(self, request):
-        if self._is_async:
-            return self.__acall__(request)
-
-        path = request.path_info
-        if any(path.startswith(prefix) for prefix in _EXEMPT_PREFIXES):
-            return self.get_response(request)
-
-        if request.META.get('HTTP_UPGRADE', '').lower() == 'websocket':
-            return self.get_response(request)
-
-        x_forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
-        ip = (
-            x_forwarded.split(',')[0].strip()
-            if x_forwarded
-            else request.META.get('REMOTE_ADDR', 'unknown')
-        )
-        ip_hash   = hashlib.sha256(ip.encode()).hexdigest()[:24]
-        cache_key = f'rl:global:{ip_hash}'
-
-        if self._is_blocked(cache_key, ip):
-            return HttpResponse(
-                'Rate limit exceeded. Please slow down.',
-                status=429,
-                content_type='text/plain',
-            )
-
-        return self.get_response(request)
-
-    async def __acall__(self, request):
+    async def __call__(self, request):
         path = request.path_info
 
         # ── 1. Always exempt: admin, static, media ────────────────────────────
@@ -184,6 +154,10 @@ class GlobalRateLimitMiddleware:
             return False
 
 
+# Mark as coroutine function so asgiref's async_to_sync never warns
+markcoroutinefunction(GlobalRateLimitMiddleware)
+
+
 class TerminalErrorLoggingMiddleware:
     """
     High-visibility production error logging middleware.
@@ -191,11 +165,11 @@ class TerminalErrorLoggingMiddleware:
     Intercepts all unhandled exceptions (500 errors) and HTTP >= 500 status
     codes, printing a clean, diagnostic box to the terminal stderr/stdout.
 
-    Dual-compatible (sync and async) for use with Daphne / uvicorn / WSGI / ASGI.
+    Fully async-compatible for use with Daphne / uvicorn / ASGI.
     """
 
-    sync_capable  = True
     async_capable = True
+    sync_capable  = False
 
     # Keys whose values should be redacted to prevent sensitive leaks in logs.
     SENSITIVE_KEYS = {
@@ -206,27 +180,8 @@ class TerminalErrorLoggingMiddleware:
 
     def __init__(self, get_response):
         self.get_response = get_response
-        self._is_async = asyncio.iscoroutinefunction(get_response)
 
-    def __call__(self, request):
-        if self._is_async:
-            return self.__acall__(request)
-
-        request._terminal_error_logged = False
-        try:
-            response = self.get_response(request)
-        except Exception as exc:
-            if not _is_cancelled_error(exc):
-                self._log_exception(request, exc)
-            raise
-
-        # Log 5xx responses returned directly without raising an exception.
-        if response.status_code >= 500 and not getattr(request, '_terminal_error_logged', False):
-            self._log_http_5xx(request, response)
-
-        return response
-
-    async def __acall__(self, request):
+    async def __call__(self, request):
         request._terminal_error_logged = False
         try:
             response = await self.get_response(request)
@@ -244,6 +199,10 @@ class TerminalErrorLoggingMiddleware:
         return response
 
     def process_exception(self, request, exception):
+        """
+        Called by Django for unhandled view exceptions.
+        Synchronous method as expected by Django's exception handling stack.
+        """
         if _is_cancelled_error(exception):
             return None
         self._log_exception(request, exception)
@@ -365,3 +324,7 @@ class TerminalErrorLoggingMiddleware:
         """Check if a parameter name matches any known sensitive keyword."""
         key_lower = key_name.lower().replace('-', '_')
         return any(sensitive in key_lower for sensitive in self.SENSITIVE_KEYS)
+
+
+# Mark as coroutine function so asgiref's async_to_sync never warns
+markcoroutinefunction(TerminalErrorLoggingMiddleware)
