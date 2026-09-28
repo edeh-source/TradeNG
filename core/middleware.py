@@ -52,38 +52,98 @@ _DEFAULT_LIMIT  = 300
 _DEFAULT_WINDOW = 60   # seconds
 
 
+def _is_cancelled_error(exception) -> bool:
+    """
+    Reliably detect CancelledError across Python versions and wrapping styles.
+
+    Python 3.11+ can wrap a CancelledError inside an ExceptionGroup (used by
+    TaskGroups). Python 3.14 does the same in some asyncio internals. We also
+    check by class name as a belt-and-suspenders guard against subclasses or
+    re-exports that don't inherit directly from asyncio.CancelledError.
+    """
+    # Direct instance check (covers the vast majority of cases).
+    if isinstance(exception, asyncio.CancelledError):
+        return True
+
+    # ExceptionGroup wrapping — Python 3.11+ (PEP 654).
+    # If every exception inside the group is a CancelledError, treat the whole
+    # group as a cancellation signal, not a server error.
+    if hasattr(exception, 'exceptions') and exception.exceptions:
+        if all(_is_cancelled_error(e) for e in exception.exceptions):
+            return True
+
+    # Final fallback: match by class name in case of unusual subclassing.
+    return type(exception).__name__ in ('CancelledError',)
+
+
 class GlobalRateLimitMiddleware:
     """
     Coarse sliding-window (or fixed-window fallback) per-IP rate limiter
     applied globally before any view logic runs.
 
-    Fully async-compatible for use with Daphne / ASGI.
+    Fully async-compatible for use with Daphne / uvicorn / ASGI.
+
+    WebSocket upgrade requests are intentionally exempt:
+      - They represent a single long-lived connection, not repeated HTTP hits.
+      - The sync_to_async cache call during a WebSocket handshake is a common
+        source of asyncio.CancelledError collisions when Render closes idle
+        connections after ~55 s. Skipping it entirely avoids the problem.
     """
 
     async_capable = True
-    sync_capable = False
+    sync_capable  = False
 
     def __init__(self, get_response):
         self.get_response = get_response
-        self.limit  = getattr(settings, 'GLOBAL_RATE_LIMIT',        _DEFAULT_LIMIT)
-        self.window = getattr(settings, 'GLOBAL_RATE_LIMIT_WINDOW',  _DEFAULT_WINDOW)
+        self.limit  = getattr(settings, 'GLOBAL_RATE_LIMIT',       _DEFAULT_LIMIT)
+        self.window = getattr(settings, 'GLOBAL_RATE_LIMIT_WINDOW', _DEFAULT_WINDOW)
 
     async def __call__(self, request):
-        # Skip exempt paths (admin, static, media).
         path = request.path_info
+
+        # ── 1. Always exempt: admin, static, media ────────────────────────────
         if any(path.startswith(prefix) for prefix in _EXEMPT_PREFIXES):
             return await self.get_response(request)
 
-        # Derive IP from X-Forwarded-For (set by reverse proxies / Render).
-        x_forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
-        ip = x_forwarded.split(',')[0].strip() if x_forwarded else request.META.get('REMOTE_ADDR', 'unknown')
+        # ── 2. Exempt WebSocket upgrade handshakes ────────────────────────────
+        # WebSocket connections are long-lived; counting the upgrade request
+        # against the rate limit is semantically wrong. More importantly,
+        # invoking sync_to_async during a WS handshake creates a race between
+        # the cache thread and asyncio task cancellation (triggered when Render
+        # closes idle connections), producing the double-CancelledError pattern
+        # visible in asgiref's asyncio.shield → await exec_coro traceback.
+        if request.META.get('HTTP_UPGRADE', '').lower() == 'websocket':
+            return await self.get_response(request)
 
-        # Hash the IP so the cache key is always a safe fixed-length string.
+        # ── 3. Derive and hash the client IP ─────────────────────────────────
+        x_forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
+        ip = (
+            x_forwarded.split(',')[0].strip()
+            if x_forwarded
+            else request.META.get('REMOTE_ADDR', 'unknown')
+        )
         ip_hash   = hashlib.sha256(ip.encode()).hexdigest()[:24]
         cache_key = f'rl:global:{ip_hash}'
 
-        # Run the blocking cache call in a thread pool so we don't block the event loop.
-        blocked = await sync_to_async(self._is_blocked)(cache_key, ip)
+        # ── 4. Run the blocking cache call off the event loop ─────────────────
+        # Wrap in an explicit CancelledError guard so that a mid-flight client
+        # disconnect propagates cleanly rather than colliding inside asgiref's
+        # asyncio.shield wrapper and producing a noisy double-traceback.
+        try:
+            blocked = await sync_to_async(self._is_blocked)(cache_key, ip)
+        except asyncio.CancelledError:
+            # Client disconnected while we were checking the rate limit.
+            # Re-raise so the ASGI server can clean up normally — this is not
+            # a server error and should never be logged as one.
+            raise
+        except Exception as exc:
+            # Any other cache failure: fail open so users are never blocked by
+            # infrastructure downtime.
+            logger.warning(
+                'global_ratelimit: unexpected error in sync_to_async (failing open): %s', exc
+            )
+            blocked = False
+
         if blocked:
             return HttpResponse(
                 'Rate limit exceeded. Please slow down.',
@@ -123,11 +183,15 @@ class TerminalErrorLoggingMiddleware:
     stderr/stdout with full request context (URL, Method, IP, User, Sanitized
     Parameters) and complete Python traceback.
 
-    Fully async-compatible for use with Daphne / ASGI.
+    Fully async-compatible for use with Daphne / uvicorn / ASGI.
+
+    CancelledError (and ExceptionGroups wrapping only CancelledErrors) are
+    intentionally silenced — they indicate client disconnection or Render's
+    55-second idle-connection timeout, not server-side failures.
     """
 
     async_capable = True
-    sync_capable = False
+    sync_capable  = False
 
     # Keys whose values should be redacted to prevent sensitive leaks in logs.
     SENSITIVE_KEYS = {
@@ -164,10 +228,19 @@ class TerminalErrorLoggingMiddleware:
 
         Must be async to avoid the async_to_sync wrapping warning produced
         when Django wraps a sync process_exception on an async middleware.
+
+        CancelledError is explicitly suppressed here:
+          - On Render, idle WebSocket connections are terminated after ~55 s,
+            which causes uvicorn to cancel the running asyncio task.
+          - asgiref's asyncio.shield then raises a *second* CancelledError
+            when it tries to await the thread result for the already-cancelled
+            task — producing the double-traceback visible in the error log.
+          - Neither occurrence is a server error; both should be silently
+            re-raised so the ASGI server can clean up.
+          - Python 3.11+ ExceptionGroups that contain *only* CancelledErrors
+            are treated identically (see _is_cancelled_error helper).
         """
-        # CancelledError is not a server error — client disconnected or Render
-        # timed out the request. Never log these as production errors.
-        if isinstance(exception, asyncio.CancelledError):
+        if _is_cancelled_error(exception):
             return None
 
         request._terminal_error_logged = True
