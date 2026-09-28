@@ -35,6 +35,7 @@ import logging
 import traceback
 from datetime import datetime, timezone
 
+from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.http import HttpResponse
 
@@ -54,20 +55,25 @@ class GlobalRateLimitMiddleware:
     """
     Coarse sliding-window (or fixed-window fallback) per-IP rate limiter
     applied globally before any view logic runs.
+
+    Fully async-compatible for use with Daphne / ASGI.
     """
+
+    async_capable = True
+    sync_capable = False
 
     def __init__(self, get_response):
         self.get_response = get_response
         self.limit  = getattr(settings, 'GLOBAL_RATE_LIMIT',        _DEFAULT_LIMIT)
         self.window = getattr(settings, 'GLOBAL_RATE_LIMIT_WINDOW',  _DEFAULT_WINDOW)
 
-    def __call__(self, request):
+    async def __call__(self, request):
         # Skip exempt paths (admin, static, media).
         path = request.path_info
         if any(path.startswith(prefix) for prefix in _EXEMPT_PREFIXES):
-            return self.get_response(request)
+            return await self.get_response(request)
 
-        # Derive IP from X-Forwarded-For (set by Heroku / reverse proxies).
+        # Derive IP from X-Forwarded-For (set by reverse proxies / Render).
         x_forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
         ip = x_forwarded.split(',')[0].strip() if x_forwarded else request.META.get('REMOTE_ADDR', 'unknown')
 
@@ -75,7 +81,8 @@ class GlobalRateLimitMiddleware:
         ip_hash   = hashlib.sha256(ip.encode()).hexdigest()[:24]
         cache_key = f'rl:global:{ip_hash}'
 
-        blocked = self._is_blocked(cache_key, ip)
+        # Run the blocking cache call in a thread pool so we don't block the event loop
+        blocked = await sync_to_async(self._is_blocked)(cache_key, ip)
         if blocked:
             return HttpResponse(
                 'Rate limit exceeded. Please slow down.',
@@ -83,7 +90,7 @@ class GlobalRateLimitMiddleware:
                 content_type='text/plain',
             )
 
-        return self.get_response(request)
+        return await self.get_response(request)
 
     # ── Private helpers ───────────────────────────────────────────────────────
 
@@ -114,7 +121,12 @@ class TerminalErrorLoggingMiddleware:
     printing a clean, impossible-to-miss diagnostic box to the terminal stderr/stdout
     with full request context (URL, Method, IP, User, Sanitized Parameters)
     and complete Python traceback.
+
+    Fully async-compatible for use with Daphne / ASGI.
     """
+
+    async_capable = True
+    sync_capable = False
 
     # Keys whose values should be redacted to prevent sensitive leaks in logs
     SENSITIVE_KEYS = {
@@ -126,9 +138,9 @@ class TerminalErrorLoggingMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
 
-    def __call__(self, request):
+    async def __call__(self, request):
         request._terminal_error_logged = False
-        response = self.get_response(request)
+        response = await self.get_response(request)
 
         # Log 5xx responses that were returned directly without raising an uncaught exception
         if response.status_code >= 500 and not getattr(request, '_terminal_error_logged', False):
@@ -246,4 +258,3 @@ class TerminalErrorLoggingMiddleware:
         """Check if parameter name matches sensitive keywords."""
         key_lower = key_name.lower().replace('-', '_')
         return any(sensitive in key_lower for sensitive in self.SENSITIVE_KEYS)
-
